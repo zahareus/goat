@@ -1478,20 +1478,34 @@ async function openProfile(elementId, code, name, team, pos, ph) {
   content.innerHTML = buildProfileHeader(name, team, pos, ph) + '<div class="mb-loading">Loading match history...</div>';
 
   try {
-    // Fetch FPL history and GOAT data in parallel
-    const [histResp, goatData] = await Promise.all([
-      fetch('/api/player-detail?id=' + elementId),
+    // Try Supabase player_history first (fast), fallback to FPL API
+    const [localData, goatData] = await Promise.all([
+      sb.from('player_history').select('*').eq('element_id', elementId).order('round', { ascending: true }),
       sb.from('results').select('fixture_id').eq('element_id', elementId).eq('is_goat', true)
     ]);
-    const data = await histResp.json();
-    if (!data.history) throw new Error('No history data');
-
-    // Build set of fixture IDs where this player was GOAT
     const goatFixtures = new Set((goatData.data || []).map(r => r.fixture_id));
 
+    let history;
+    if (localData.data && localData.data.length > 0) {
+      // Use local Supabase data (maps to same field names as FPL API)
+      history = localData.data.map(r => ({
+        fixture: r.fixture_id, round: r.round, opponent_team: r.opponent_team,
+        was_home: r.was_home, kickoff_time: r.kickoff_time, minutes: r.minutes,
+        bps: r.bps, total_points: r.total_points, goals_scored: r.goals_scored,
+        assists: r.assists, clean_sheets: r.clean_sheets,
+        yellow_cards: r.yellow_cards, red_cards: r.red_cards
+      }));
+    } else {
+      // Fallback: fetch from FPL API proxy
+      const resp = await fetch('/api/player-detail?id=' + elementId);
+      const data = await resp.json();
+      if (!data.history) throw new Error('No history data');
+      history = data.history;
+    }
+
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
-      + buildProfileStats(data.history, goatFixtures.size)
-      + buildProfileHistory(data.history, goatFixtures);
+      + buildProfileStats(history, goatFixtures.size)
+      + buildProfileHistory(history, goatFixtures);
   } catch(e) {
     console.error('Profile load error:', e);
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
