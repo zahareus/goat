@@ -109,6 +109,66 @@ async function main() {
     }
 
     console.log(`\nDone! Upserted ${totalRows} rows for ${playerIds.length} players (${errors} errors)`);
+
+    // Calculate BPS ranks per fixture
+    console.log('\nCalculating BPS ranks per fixture...');
+    await calculateRanks();
+}
+
+async function calculateRanks() {
+    // Fetch all rows grouped by fixture
+    let offset = 0;
+    const allRows = [];
+    while (true) {
+        const res = await sbFetch(`/rest/v1/player_history?select=id,fixture_id,bps&order=fixture_id.asc,bps.desc&offset=${offset}&limit=1000`, {
+            prefer: 'return=representation',
+        });
+        const batch = await res.json();
+        if (!batch.length) break;
+        allRows.push(...batch);
+        offset += batch.length;
+        if (batch.length < 1000) break;
+    }
+    console.log(`  Loaded ${allRows.length} rows for ranking`);
+
+    // Group by fixture_id and assign ranks
+    const byFixture = {};
+    for (const r of allRows) {
+        if (!byFixture[r.fixture_id]) byFixture[r.fixture_id] = [];
+        byFixture[r.fixture_id].push(r);
+    }
+
+    const updates = [];
+    for (const [fid, players] of Object.entries(byFixture)) {
+        // Already sorted by bps desc from query
+        let rank = 0;
+        let prevBps = -1;
+        let skip = 0;
+        for (const p of players) {
+            skip++;
+            if (p.bps !== prevBps) {
+                rank = skip;
+                prevBps = p.bps;
+            }
+            updates.push({ id: p.id, bps_rank: rank });
+        }
+    }
+
+    // Batch update ranks via PATCH
+    let updated = 0;
+    for (let i = 0; i < updates.length; i += 50) {
+        const batch = updates.slice(i, i + 50);
+        // Update one by one (REST API doesn't support bulk PATCH by different IDs)
+        await Promise.all(batch.map(u =>
+            sbFetch(`/rest/v1/player_history?id=eq.${u.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ bps_rank: u.bps_rank }),
+            })
+        ));
+        updated += batch.length;
+        if (updated % 500 === 0) console.log(`  Ranked ${updated}/${updates.length}`);
+    }
+    console.log(`  Ranked ${updated} rows across ${Object.keys(byFixture).length} fixtures`);
 }
 
 main().catch(e => { console.error('Fatal:', e); process.exit(1); });

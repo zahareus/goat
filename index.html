@@ -1478,25 +1478,20 @@ async function openProfile(elementId, code, name, team, pos, ph) {
   content.innerHTML = buildProfileHeader(name, team, pos, ph) + '<div class="mb-loading">Loading match history...</div>';
 
   try {
-    // Try Supabase player_history first (fast), fallback to FPL API
-    const [localData, goatData] = await Promise.all([
-      sb.from('player_history').select('*').eq('element_id', elementId).order('round', { ascending: true }),
-      sb.from('results').select('fixture_id').eq('element_id', elementId).eq('is_goat', true)
-    ]);
-    const goatFixtures = new Set((goatData.data || []).map(r => r.fixture_id));
+    // Try Supabase player_history first (fast, has bps_rank), fallback to FPL API
+    const localData = await sb.from('player_history').select('*').eq('element_id', elementId).order('round', { ascending: true });
 
     let history;
     if (localData.data && localData.data.length > 0) {
-      // Use local Supabase data (maps to same field names as FPL API)
       history = localData.data.map(r => ({
         fixture: r.fixture_id, round: r.round, opponent_team: r.opponent_team,
         was_home: r.was_home, kickoff_time: r.kickoff_time, minutes: r.minutes,
         bps: r.bps, total_points: r.total_points, goals_scored: r.goals_scored,
         assists: r.assists, clean_sheets: r.clean_sheets,
-        yellow_cards: r.yellow_cards, red_cards: r.red_cards
+        yellow_cards: r.yellow_cards, red_cards: r.red_cards,
+        bps_rank: r.bps_rank
       }));
     } else {
-      // Fallback: fetch from FPL API proxy
       const resp = await fetch('/api/player-detail?id=' + elementId);
       const data = await resp.json();
       if (!data.history) throw new Error('No history data');
@@ -1504,8 +1499,8 @@ async function openProfile(elementId, code, name, team, pos, ph) {
     }
 
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
-      + buildProfileStats(history, goatFixtures.size)
-      + buildProfileHistory(history, goatFixtures);
+      + buildProfileStats(history)
+      + buildProfileHistory(history);
   } catch(e) {
     console.error('Profile load error:', e);
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
@@ -1531,23 +1526,25 @@ function buildProfileHeader(name, team, pos, ph) {
     + '</div></div></div>';
 }
 
-function buildProfileStats(history, goatCount) {
+function buildProfileStats(history) {
   if (!history || !history.length) return buildProfileStatsMock();
   var played = history.filter(h => h.minutes > 0);
   var totalBps = played.reduce((s, h) => s + (h.bps || 0), 0);
   var avgBps = played.length > 0 ? (totalBps / played.length).toFixed(1) : '0.0';
   var last6 = played.slice(-6);
   var form = last6.length > 0 ? (last6.reduce((s, h) => s + (h.bps || 0), 0) / last6.length).toFixed(1) : '0.0';
-  var maxBps = played.reduce((m, h) => Math.max(m, h.bps || 0), 0);
+  var goatCount = played.filter(h => h.bps_rank === 1).length;
+  var avgRank = played.filter(h => h.bps_rank).length > 0
+    ? (played.filter(h => h.bps_rank).reduce((s, h) => s + h.bps_rank, 0) / played.filter(h => h.bps_rank).length).toFixed(1) : '-';
   return '<div class="mb-profile-stats">'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgBps + '</div><div class="mb-stat-label">Avg BPS</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + form + '</div><div class="mb-stat-label">Form (L6)</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + (goatCount || 0) + ' \uD83D\uDC51</div><div class="mb-stat-label">GOATs</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + goatCount + ' \uD83D\uDC51</div><div class="mb-stat-label">GOATs</div></div>'
     + '</div>'
     + '<div class="mb-profile-stats" style="margin-top:0;border-top:none;padding-top:0">'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgRank + '</div><div class="mb-stat-label">Avg Rank</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + played.length + '</div><div class="mb-stat-label">Games</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + maxBps + '</div><div class="mb-stat-label">Best BPS</div></div>'
     + '</div>';
 }
 
@@ -1559,7 +1556,7 @@ function buildProfileStatsMock() {
     + '</div>';
 }
 
-function buildProfileHistory(history, goatFixtures) {
+function buildProfileHistory(history) {
   if (!history || !history.length) {
     return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
   }
@@ -1568,17 +1565,18 @@ function buildProfileHistory(history, goatFixtures) {
   played.forEach(function(h) {
     var opp = FPL_TEAM_MAP[h.opponent_team] || '?';
     var ha = h.was_home ? '(H)' : '(A)';
-    var d = new Date(h.kickoff_time);
-    var date = d.toLocaleDateString('en-GB', {day:'2-digit', month:'short'});
     var bps = h.bps || 0;
-    var isGoat = goatFixtures && goatFixtures.has(h.fixture);
-    var crownHtml = isGoat ? ' <span style="color:#BFB294">\uD83D\uDC51</span>' : '';
-    var rowCls = isGoat ? ' class="goat-row"' : '';
-    rows += '<tr' + rowCls + '><td>GW' + h.round + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + crownHtml + '</td></tr>';
+    var rank = h.bps_rank;
+    var rankHtml = '';
+    if (rank === 1) rankHtml = ' <span style="color:#BFB294">\uD83D\uDC51</span>';
+    else if (rank && rank <= 3) rankHtml = ' <span style="color:#8a8060;font-size:10px">(' + rank + ')</span>';
+    else if (rank) rankHtml = ' <span style="color:#555;font-size:10px">(' + rank + ')</span>';
+    var rowCls = rank === 1 ? ' class="goat-row"' : '';
+    rows += '<tr' + rowCls + '><td>GW' + h.round + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + rankHtml + '</td></tr>';
   });
   return '<div class="mb-history-title">Season History (' + played.length + ' games)</div>'
     + '<div class="mb-history-wrap"><table class="mb-history-table">'
-    + '<thead><tr><th>GW</th><th>Opp</th><th>Min</th><th>BPS</th></tr></thead>'
+    + '<thead><tr><th>GW</th><th>Opp</th><th>Min</th><th>BPS / Rank</th></tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '</table></div>';
 }
