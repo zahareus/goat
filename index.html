@@ -823,7 +823,7 @@ async function loadUserPicks() {
 }
 
 async function loadPlayerStats() {
-  // Fetch bps_rank for all players to compute avg rank, form, GOAT count
+  // Fetch bps_rank for all players to compute Bayesian avg rank, form, GOAT count
   playerStats = {};
   let offset = 0;
   const allRows = [];
@@ -834,7 +834,8 @@ async function loadPlayerStats() {
     offset += data.length;
     if (data.length < 1000) break;
   }
-  // Group by element_id and calculate stats
+  // Bayesian average constants: C=6 prior games, M=15 mean rank
+  const C = 6, M = 15;
   const byPlayer = {};
   for (const r of allRows) {
     if (!r.bps_rank) continue;
@@ -842,11 +843,19 @@ async function loadPlayerStats() {
     byPlayer[r.element_id].push(r.bps_rank);
   }
   for (const [eid, ranks] of Object.entries(byPlayer)) {
-    const avg = ranks.reduce((s, r) => s + r, 0) / ranks.length;
+    const sum = ranks.reduce((s, r) => s + r, 0);
+    const n = ranks.length;
+    // Bayesian avg: pulls low-sample players toward mean
+    const bayesAvg = (C * M + sum) / (C + n);
     const l6 = ranks.slice(-6);
-    const form = l6.reduce((s, r) => s + r, 0) / l6.length;
+    const l6sum = l6.reduce((s, r) => s + r, 0);
+    const bayesForm = (C * M + l6sum) / (C + l6.length);
     const goats = ranks.filter(r => r === 1).length;
-    playerStats[eid] = { avgRank: Math.round(avg * 10) / 10, formRank: Math.round(form * 10) / 10, goats };
+    playerStats[eid] = {
+      avgRank: Math.round(bayesAvg * 10) / 10,
+      formRank: Math.round(bayesForm * 10) / 10,
+      goats, games: n
+    };
   }
 }
 
@@ -933,18 +942,14 @@ function renderMatchBlocks() {
     const lockedHtml = locked ? '<span class="match-locked">\uD83D\uDD12 LOCKED</span>' : '';
     const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
 
-    const cards = matchPlayers.map(function(p) {
+    const cards = matchPlayers.map(function(p, ci) {
       const isSel = sel && sel.element_id === p.element_id;
       const sc = isSel ? ' selected' : '';
       const ps = playerStats[p.element_id] || {};
       const avgR = ps.avgRank || 99;
       const formR = ps.formRank || 99;
       const goats = ps.goats || 0;
-      // Show stat badge under team/pos
-      var statLine = '';
-      if (ps.avgRank) statLine = '<div class="phex-stat">Avg ' + ps.avgRank + ' \u00B7 L6 ' + ps.formRank + (goats > 0 ? ' \u00B7 \uD83D\uDC51' + goats : '') + '</div>';
-      var cardIdx = matchPlayers.indexOf(p);
-      return '<div class="phex-card' + sc + '" data-orig-idx="' + cardIdx + '" data-pos="' + p.position + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
+      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + p.position + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
@@ -954,7 +959,6 @@ function renderMatchBlocks() {
         + '<img src="' + CDN + p.code + '.png" loading="' + (idx === 0 ? 'eager' : 'lazy') + '" onerror="this.style.display=\'none\'" alt="">'
         + '</div></div>'
         + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
-        + statLine
         + '</div>';
     }).join('');
 
@@ -1590,9 +1594,6 @@ function buildProfileStats(history) {
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgRank + '</div><div class="mb-stat-label">Avg Rank</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + formRank + '</div><div class="mb-stat-label">Form (L6)</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
-    + '</div>'
-    + '<div class="mb-profile-stats" style="margin-top:0;border-top:none;padding-top:0">'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + played.length + '</div><div class="mb-stat-label">Games</div></div>'
     + '</div>';
 }
 
@@ -1608,21 +1609,31 @@ function buildProfileHistory(history) {
   if (!history || !history.length) {
     return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
   }
-  var played = history.filter(h => h.minutes > 0).reverse();
+  // Build lookup by round
+  var byRound = {};
+  history.forEach(function(h) { byRound[h.round] = h; });
+  // Find max round played this season
+  var maxRound = Math.max.apply(null, history.map(function(h) { return h.round; }));
   var rows = '';
-  played.forEach(function(h) {
-    var opp = FPL_TEAM_MAP[h.opponent_team] || '?';
-    var ha = h.was_home ? '(H)' : '(A)';
-    var bps = h.bps || 0;
-    var rank = h.bps_rank;
-    var rankHtml = '';
-    if (rank === 1) rankHtml = ' <span style="color:#BFB294">\uD83D\uDC51</span>';
-    else if (rank && rank <= 3) rankHtml = ' <span style="color:#8a8060;font-size:10px">(' + rank + ')</span>';
-    else if (rank) rankHtml = ' <span style="color:#555;font-size:10px">(' + rank + ')</span>';
-    var rowCls = rank === 1 ? ' class="goat-row"' : '';
-    rows += '<tr' + rowCls + '><td>GW' + h.round + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + rankHtml + '</td></tr>';
-  });
-  return '<div class="mb-history-title">Season History (' + played.length + ' games)</div>'
+  // Show all GWs from most recent to GW1
+  for (var gw = maxRound; gw >= 1; gw--) {
+    var h = byRound[gw];
+    if (h && h.minutes > 0) {
+      var opp = FPL_TEAM_MAP[h.opponent_team] || '?';
+      var ha = h.was_home ? '(H)' : '(A)';
+      var bps = h.bps || 0;
+      var rank = h.bps_rank;
+      var rankHtml = '';
+      if (rank === 1) rankHtml = ' <span style="color:#BFB294">\uD83D\uDC51</span>';
+      else if (rank && rank <= 3) rankHtml = ' <span style="color:#8a8060;font-size:10px">(' + rank + ')</span>';
+      else if (rank) rankHtml = ' <span style="color:#555;font-size:10px">(' + rank + ')</span>';
+      var rowCls = rank === 1 ? ' class="goat-row"' : '';
+      rows += '<tr' + rowCls + '><td>GW' + gw + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + rankHtml + '</td></tr>';
+    } else {
+      rows += '<tr style="opacity:0.35"><td>GW' + gw + '</td><td>\u2014</td><td>\u2014</td><td class="td-bps">\u2014</td></tr>';
+    }
+  }
+  return '<div class="mb-history-title">Season History</div>'
     + '<div class="mb-history-wrap"><table class="mb-history-table">'
     + '<thead><tr><th>GW</th><th>Opp</th><th>Min</th><th>BPS / Rank</th></tr></thead>'
     + '<tbody>' + rows + '</tbody>'
