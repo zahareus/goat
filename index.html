@@ -221,6 +221,8 @@ body{
 .mb-history-table .td-mb{text-align:center;font-size:13px}
 .mb-loading{text-align:center;padding:40px;color:#BFB294;font-size:13px}
 .mb-api-note{padding:8px 20px 16px;font-size:10px;color:#3a3a3a;font-style:italic}
+tr.goat-row{background:#2a2510}
+tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 
 /* Team strip (sticky bottom) */
 .team-strip{
@@ -495,7 +497,6 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 <!-- ===== AUTH SCREEN ===== -->
 <div id="auth-screen" class="auth-screen">
   <img src="assets/logo.png" class="auth-logo" alt="GOAT">
-  <div class="auth-title">GOAT</div>
   <div class="auth-sub">Pick the Greatest of All Time</div>
   <div class="auth-box">
     <h2>Sign in with Email</h2>
@@ -1048,10 +1049,14 @@ function renderStrip() {
     submitBtn.textContent = 'Closed';
     submitBtn.disabled = true;
     submitBtn.style.display = '';
+  } else if (count < totalMatches) {
+    submitBtn.style.display = '';
+    submitBtn.textContent = count === 0 ? 'Pick GOATs' : count + '/' + totalMatches + ' — pick all';
+    submitBtn.disabled = true;
   } else {
     submitBtn.style.display = '';
     submitBtn.textContent = 'Submit';
-    submitBtn.disabled = count === 0;
+    submitBtn.disabled = false;
   }
 }
 
@@ -1473,12 +1478,22 @@ async function openProfile(elementId, code, name, team, pos, ph) {
   content.innerHTML = buildProfileHeader(name, team, pos, ph) + '<div class="mb-loading">Loading match history...</div>';
 
   try {
-    const resp = await fetch('/api/player-detail?id=' + elementId);
-    const data = await resp.json();
+    // Fetch FPL history and GOAT data in parallel
+    const [histResp, goatData] = await Promise.all([
+      fetch('/api/player-detail?id=' + elementId),
+      sb.from('results').select('fixture_id').eq('element_id', elementId).eq('is_goat', true)
+    ]);
+    const data = await histResp.json();
+    if (!data.history) throw new Error('No history data');
+
+    // Build set of fixture IDs where this player was GOAT
+    const goatFixtures = new Set((goatData.data || []).map(r => r.fixture_id));
+
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
-      + buildProfileStats(data.history)
-      + buildProfileHistory(data.history);
+      + buildProfileStats(data.history, goatFixtures.size)
+      + buildProfileHistory(data.history, goatFixtures);
   } catch(e) {
+    console.error('Profile load error:', e);
     content.innerHTML = buildProfileHeader(name, team, pos, ph)
       + buildProfileStatsMock()
       + '<div class="mb-api-note">\u26A0 Player data temporarily unavailable. Try again later.</div>';
@@ -1502,16 +1517,23 @@ function buildProfileHeader(name, team, pos, ph) {
     + '</div></div></div>';
 }
 
-function buildProfileStats(history) {
+function buildProfileStats(history, goatCount) {
   if (!history || !history.length) return buildProfileStatsMock();
   var played = history.filter(h => h.minutes > 0);
   var totalBps = played.reduce((s, h) => s + (h.bps || 0), 0);
+  var avgBps = played.length > 0 ? (totalBps / played.length).toFixed(1) : '0.0';
   var last6 = played.slice(-6);
   var form = last6.length > 0 ? (last6.reduce((s, h) => s + (h.bps || 0), 0) / last6.length).toFixed(1) : '0.0';
+  var maxBps = played.reduce((m, h) => Math.max(m, h.bps || 0), 0);
   return '<div class="mb-profile-stats">'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgBps + '</div><div class="mb-stat-label">Avg BPS</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + form + '</div><div class="mb-stat-label">Form (L6)</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + last6.length + '/6</div><div class="mb-stat-label">Games</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + (goatCount || 0) + ' \uD83D\uDC51</div><div class="mb-stat-label">GOATs</div></div>'
+    + '</div>'
+    + '<div class="mb-profile-stats" style="margin-top:0;border-top:none;padding-top:0">'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + played.length + '</div><div class="mb-stat-label">Games</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + maxBps + '</div><div class="mb-stat-label">Best BPS</div></div>'
     + '</div>';
 }
 
@@ -1523,11 +1545,11 @@ function buildProfileStatsMock() {
     + '</div>';
 }
 
-function buildProfileHistory(history) {
+function buildProfileHistory(history, goatFixtures) {
   if (!history || !history.length) {
-    return '<div class="mb-history-title">Recent Matches</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
+    return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
   }
-  var played = history.filter(h => h.minutes > 0).reverse().slice(0, 20);
+  var played = history.filter(h => h.minutes > 0).reverse();
   var rows = '';
   played.forEach(function(h) {
     var opp = FPL_TEAM_MAP[h.opponent_team] || '?';
@@ -1535,11 +1557,14 @@ function buildProfileHistory(history) {
     var d = new Date(h.kickoff_time);
     var date = d.toLocaleDateString('en-GB', {day:'2-digit', month:'short'});
     var bps = h.bps || 0;
-    rows += '<tr><td>' + date + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + '</td></tr>';
+    var isGoat = goatFixtures && goatFixtures.has(h.fixture);
+    var crownHtml = isGoat ? ' <span style="color:#BFB294">\uD83D\uDC51</span>' : '';
+    var rowCls = isGoat ? ' class="goat-row"' : '';
+    rows += '<tr' + rowCls + '><td>GW' + h.round + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + crownHtml + '</td></tr>';
   });
-  return '<div class="mb-history-title">Recent Matches</div>'
+  return '<div class="mb-history-title">Season History (' + played.length + ' games)</div>'
     + '<div class="mb-history-wrap"><table class="mb-history-table">'
-    + '<thead><tr><th>Date</th><th>Opp</th><th>Min</th><th>BPS</th></tr></thead>'
+    + '<thead><tr><th>GW</th><th>Opp</th><th>Min</th><th>BPS</th></tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '</table></div>';
 }
