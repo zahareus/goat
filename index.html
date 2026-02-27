@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOAT — Pick the Greatest</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🐐</text></svg>">
+<link rel="preconnect" href="https://zanssnurnzdqwaxuadge.supabase.co" crossorigin>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -227,6 +228,7 @@ body{
   padding:8px 16px;display:flex;align-items:center;gap:5px;z-index:300;
 }
 .strip-label{font-size:9px;color:#777;text-transform:uppercase;letter-spacing:1px;margin-right:4px;white-space:nowrap}
+#strip-slots{display:flex;gap:3px;overflow-x:auto;flex:1;align-items:center}
 .strip-slot{
   width:28px;height:32px;flex-shrink:0;
   clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
@@ -463,6 +465,14 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 .profile-save:hover{background:#d4c9a8}
 .profile-msg{font-size:12px;color:#4CAF50;margin-top:10px;min-height:18px}
 
+/* Change button on My Team cards */
+.mt2-change{
+  margin-top:4px;font-size:10px;color:#BFB294;cursor:pointer;
+  border:1px solid #BFB294;padding:3px 10px;text-transform:uppercase;
+  letter-spacing:0.5px;font-weight:700;
+}
+.mt2-change:hover{background:#BFB294;color:#111}
+
 /* ===== EMPTY / LOADING STATES ===== */
 .empty-state{text-align:center;padding:60px 24px;color:#555}
 .empty-state .emoji{font-size:48px;margin-bottom:16px;display:block}
@@ -659,7 +669,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const CDN = 'https://resources.premierleague.com/premierleague25/photos/players/110x140/';
+const CDN = 'https://zanssnurnzdqwaxuadge.supabase.co/storage/v1/object/public/player-photos/';
 const PO = {GKP:1, DEF:2, MID:3, FWD:4};
 const POS_COLORS = {GKP:'#f5c518', DEF:'#00d5e0', MID:'#a0e000', FWD:'#ff6b35'};
 const FPL_TEAM_MAP = {"1":"ARS","2":"AVL","3":"BUR","4":"BOU","5":"BRE","6":"BHA","7":"CHE","8":"CRY","9":"EVE","10":"FUL","11":"LEE","12":"LIV","13":"MCI","14":"MUN","15":"NEW","16":"NFO","17":"SUN","18":"TOT","19":"WHU","20":"WOL"};
@@ -807,14 +817,54 @@ async function loadUserPicks() {
   }
 }
 
+// ===== DEADLINE HELPERS =====
+function getFirstKickoff() {
+  // Returns kickoff of first SCHEDULED (not yet started) fixture
+  if (!fixtures.length) return null;
+  let earliest = null;
+  for (const f of fixtures) {
+    if (f.status !== 'scheduled') continue;
+    const ko = new Date(f.kickoff_time);
+    if (!earliest || ko < earliest) earliest = ko;
+  }
+  return earliest;
+}
+
+function hasSubmitted() {
+  return Object.keys(userPicks).length > 0;
+}
+
+function isMatchLocked(f) {
+  const now = new Date();
+  const ko = new Date(f.kickoff_time);
+  return f.status !== 'scheduled' || now >= ko;
+}
+
 // ===== PICK TAB =====
 function renderPickTab() {
   if (!gwConfig) return;
   document.getElementById('pick-gw-title').textContent = gwConfig.label || ('Gameweek ' + currentGW);
-  const deadline = gwConfig.deadline ? new Date(gwConfig.deadline) : null;
-  document.getElementById('pick-gw-sub').textContent = deadline
-    ? 'Deadline: ' + deadline.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' · ' + deadline.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'})
-    : '';
+
+  // Show deadline = first kickoff time
+  const firstKO = getFirstKickoff();
+  const now = new Date();
+  const submitted = hasSubmitted();
+  let subText = '';
+
+  if (!submitted) {
+    if (!firstKO) {
+      // All matches already started, no scheduled fixtures left
+      subText = '\uD83D\uDD12 Deadline passed \u2014 all matches started';
+    } else if (now >= firstKO) {
+      subText = '\uD83D\uDD12 Deadline passed \u2014 picks are closed';
+    } else {
+      const koStr = firstKO.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + firstKO.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+      subText = 'Submit before ' + koStr;
+    }
+  } else {
+    subText = 'Submitted \u2713 \u2014 change picks until each match kicks off';
+  }
+  document.getElementById('pick-gw-sub').textContent = subText;
 
   renderMatchBlocks();
   renderStrip();
@@ -827,21 +877,28 @@ function renderMatchBlocks() {
     return;
   }
 
+  const now = new Date();
+  const firstKO = getFirstKickoff();
+  const submitted = hasSubmitted();
+  // Before submit: block if no scheduled fixtures left (global deadline passed)
+  const globalDeadlinePassed = !submitted && (!firstKO || now >= firstKO);
+
   let html = '';
   for (let idx = 0; idx < fixtures.length; idx++) {
     const f = fixtures[idx];
     const matchNum = idx + 1;
-    const now = new Date();
     const ko = new Date(f.kickoff_time);
-    const isLocked = f.status !== 'scheduled' || now >= ko;
+    const matchStarted = isMatchLocked(f);
+    // Always lock started matches. Before submit: also lock all if global deadline passed.
+    const locked = matchStarted || globalDeadlinePassed;
     const sel = selections[f.id];
 
     // Get players for this fixture (both teams)
     const matchPlayers = getPlayersForFixture(f);
 
     const badgeHtml = sel ? '<span class="match-selected-badge">\u2713 ' + sel.name + '</span>' : '';
-    const lockedHtml = isLocked ? '<span class="match-locked">\uD83D\uDD12 LOCKED</span>' : '';
-    const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' · ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+    const lockedHtml = locked ? '<span class="match-locked">\uD83D\uDD12 LOCKED</span>' : '';
+    const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
 
     const cards = matchPlayers.map(function(p) {
       const isSel = sel && sel.element_id === p.element_id;
@@ -851,9 +908,9 @@ function renderMatchBlocks() {
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
         + '</div>'
-        + '<div class="phex-outer' + sc + '" onclick="selectPlayer(' + f.id + ',' + p.element_id + ',this.closest(\'.phex-card\'),' + (isLocked?'true':'false') + ')">'
+        + '<div class="phex-outer' + sc + '" onclick="selectPlayer(' + f.id + ',' + p.element_id + ',this.closest(\'.phex-card\'),' + (locked?'true':'false') + ')">'
         + '<div class="phex-inner">'
-        + '<img src="' + CDN + p.code + '.png" onerror="this.style.display=\'none\'" alt="">'
+        + '<img src="' + CDN + p.code + '.png" loading="' + (idx === 0 ? 'eager' : 'lazy') + '" onerror="this.style.display=\'none\'" alt="">'
         + '</div></div>'
         + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
         + '</div>';
@@ -899,7 +956,7 @@ function getPlayersForFixture(f) {
 }
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
-  if (locked) { showToast('This match has already started'); return; }
+  if (locked) { showToast('This match is locked'); return; }
 
   const matchBlock = document.getElementById('match-' + fixtureId);
 
@@ -923,10 +980,43 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
 
   selections[fixtureId] = { element_id: elementId, code, name, img };
   renderStrip();
+
+  // Auto-save if user already submitted picks (Phase 2)
+  if (hasSubmitted()) {
+    saveSinglePick(fixtureId, elementId);
+  }
+}
+
+async function saveSinglePick(fixtureId, elementId) {
+  if (!currentUser) return;
+  const existing = userPicks[fixtureId];
+  try {
+    if (existing) {
+      if (existing.element_id === elementId) return; // no change
+      await sb.from('picks').update({
+        element_id: elementId,
+        updated_at: new Date().toISOString()
+      }).eq('id', existing.id);
+    } else {
+      await sb.from('picks').insert({
+        user_id: currentUser.id,
+        fixture_id: fixtureId,
+        element_id: elementId,
+        gw: currentGW
+      });
+    }
+    // Update local state
+    await loadUserPicks();
+    showToast('Pick saved');
+  } catch(e) {
+    showToast('Error saving pick');
+    console.error(e);
+  }
 }
 
 function renderStrip() {
   const slotsEl = document.getElementById('strip-slots');
+  const submitBtn = document.getElementById('strip-submit');
   const totalMatches = fixtures.length;
   let html = '';
   let count = 0;
@@ -944,6 +1034,24 @@ function renderStrip() {
 
   slotsEl.innerHTML = html;
   document.getElementById('strip-count').textContent = count + '/' + totalMatches;
+
+  const submitted = hasSubmitted();
+  const now = new Date();
+  const firstKO = getFirstKickoff();
+  const globalDeadlinePassed = !submitted && firstKO && now >= firstKO;
+
+  if (submitted) {
+    // Phase 2: auto-save mode, hide submit button
+    submitBtn.style.display = 'none';
+  } else if (globalDeadlinePassed) {
+    submitBtn.textContent = 'Closed';
+    submitBtn.disabled = true;
+    submitBtn.style.display = '';
+  } else {
+    submitBtn.style.display = '';
+    submitBtn.textContent = 'Submit';
+    submitBtn.disabled = count === 0;
+  }
 }
 
 async function submitPicks() {
@@ -986,6 +1094,9 @@ async function submitPicks() {
     // Reload picks
     await loadUserPicks();
     showToast('Picks saved!');
+    // Re-render to switch to Phase 2 (auto-save mode)
+    renderPickTab();
+    renderMyTeam();
   } catch(e) {
     showToast('Error saving picks');
     console.error(e);
@@ -1171,6 +1282,10 @@ function renderMyTeam() {
 
     const bpsClass = (!isLive && !isFt) ? ' pending' : '';
     const bpsDisplay = (!isLive && !isFt) ? '\u2013' : bpsVal;
+    const canChange = !isMatchLocked(f);
+    const changeBtn = canChange
+      ? '<div class="mt2-change" onclick="goToMatch(' + f.id + ')">Change</div>'
+      : '';
 
     html += '<div class="mt2-card' + cardClass + '">'
       + '<div class="mt2-match">' + f.home_short + ' - ' + f.away_short + '</div>'
@@ -1182,6 +1297,7 @@ function renderMyTeam() {
       + '<div class="mt2-name">' + esc(pl.short_name || pl.name) + '</div>'
       + '<div class="mt2-pos">' + pl.position + '</div>'
       + '<div class="mt2-bps' + bpsClass + '">' + bpsDisplay + '</div>'
+      + changeBtn
       + '</div>';
   }
 
@@ -1425,6 +1541,15 @@ function buildProfileHistory(history) {
     + '<thead><tr><th>Date</th><th>Opp</th><th>Min</th><th>BPS</th></tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '</table></div>';
+}
+
+// ===== NAVIGATION HELPERS =====
+function goToMatch(fixtureId) {
+  switchTab('pick');
+  setTimeout(function() {
+    var el = document.getElementById('match-' + fixtureId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 }
 
 // ===== UI HELPERS =====
