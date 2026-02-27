@@ -162,6 +162,7 @@ body{
 .phex-outer.selected .phex-inner{background:#2a2216}
 .phex-inner img{width:100%;height:120%;object-fit:cover;object-position:top center;display:block}
 .phex-team-pos{font-size:9px;color:#666;text-align:center;line-height:1.5}
+.phex-stat{font-size:8px;color:#8a8060;text-align:center;line-height:1.3;white-space:nowrap}
 .phex-card.selected .phex-team-pos{color:#BFB294;opacity:0.8}
 
 /* Player name wrap + info button */
@@ -686,6 +687,7 @@ let results = {};       // fixture_id -> [{element_id, bps, is_goat}]
 let userPicks = {};     // fixture_id -> {element_id, id (pick uuid)}
 let selections = {};    // fixture_id -> {element_id, code, name, img} (unsaved UI state)
 let standingsGW = null;
+let playerStats = {};   // element_id -> {avgRank, formRank, goats}
 
 // ===== AUTH =====
 async function initAuth() {
@@ -766,7 +768,8 @@ async function loadAppData() {
   await Promise.all([
     loadFixtures(),
     loadPlayers(),
-    loadUserPicks()
+    loadUserPicks(),
+    loadPlayerStats()
   ]);
 
   renderPickTab();
@@ -816,6 +819,34 @@ async function loadUserPicks() {
         img: CDN + pl.code + '.png'
       };
     }
+  }
+}
+
+async function loadPlayerStats() {
+  // Fetch bps_rank for all players to compute avg rank, form, GOAT count
+  playerStats = {};
+  let offset = 0;
+  const allRows = [];
+  while (true) {
+    const { data } = await sb.from('player_history').select('element_id,bps_rank,round').order('round', { ascending: true }).range(offset, offset + 999);
+    if (!data || !data.length) break;
+    allRows.push(...data);
+    offset += data.length;
+    if (data.length < 1000) break;
+  }
+  // Group by element_id and calculate stats
+  const byPlayer = {};
+  for (const r of allRows) {
+    if (!r.bps_rank) continue;
+    if (!byPlayer[r.element_id]) byPlayer[r.element_id] = [];
+    byPlayer[r.element_id].push(r.bps_rank);
+  }
+  for (const [eid, ranks] of Object.entries(byPlayer)) {
+    const avg = ranks.reduce((s, r) => s + r, 0) / ranks.length;
+    const l6 = ranks.slice(-6);
+    const form = l6.reduce((s, r) => s + r, 0) / l6.length;
+    const goats = ranks.filter(r => r === 1).length;
+    playerStats[eid] = { avgRank: Math.round(avg * 10) / 10, formRank: Math.round(form * 10) / 10, goats };
   }
 }
 
@@ -905,7 +936,15 @@ function renderMatchBlocks() {
     const cards = matchPlayers.map(function(p) {
       const isSel = sel && sel.element_id === p.element_id;
       const sc = isSel ? ' selected' : '';
-      return '<div class="phex-card' + sc + '" data-pos="' + p.position + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png">'
+      const ps = playerStats[p.element_id] || {};
+      const avgR = ps.avgRank || 99;
+      const formR = ps.formRank || 99;
+      const goats = ps.goats || 0;
+      // Show stat badge under team/pos
+      var statLine = '';
+      if (ps.avgRank) statLine = '<div class="phex-stat">Avg ' + ps.avgRank + ' \u00B7 L6 ' + ps.formRank + (goats > 0 ? ' \u00B7 \uD83D\uDC51' + goats : '') + '</div>';
+      var cardIdx = matchPlayers.indexOf(p);
+      return '<div class="phex-card' + sc + '" data-orig-idx="' + cardIdx + '" data-pos="' + p.position + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
@@ -915,6 +954,7 @@ function renderMatchBlocks() {
         + '<img src="' + CDN + p.code + '.png" loading="' + (idx === 0 ? 'eager' : 'lazy') + '" onerror="this.style.display=\'none\'" alt="">'
         + '</div></div>'
         + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
+        + statLine
         + '</div>';
     }).join('');
 
@@ -929,11 +969,10 @@ function renderMatchBlocks() {
       + '<div>' + badgeHtml + lockedHtml + '</div>'
       + '</div>'
       + '<div class="pos-tabs">'
-      + '<div class="pos-tab active" onclick="filterPos(' + f.id + ',\'ALL\',this)">All</div>'
-      + '<div class="pos-tab" onclick="filterPos(' + f.id + ',\'GKP\',this)">GK</div>'
-      + '<div class="pos-tab" onclick="filterPos(' + f.id + ',\'DEF\',this)">DEF</div>'
-      + '<div class="pos-tab" onclick="filterPos(' + f.id + ',\'MID\',this)">MID</div>'
-      + '<div class="pos-tab" onclick="filterPos(' + f.id + ',\'FWD\',this)">FWD</div>'
+      + '<div class="pos-tab active" onclick="sortMatch(' + f.id + ',\'all\',this)">All</div>'
+      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'avgrank\',this)">Avg Rank</div>'
+      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'form\',this)">Form</div>'
+      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'goats\',this)">\uD83D\uDC51 GOAT</div>'
       + '</div>'
       + '<div class="player-row-outer"><div class="player-row">' + cards + '</div></div>'
       + '</div>';
@@ -1112,17 +1151,28 @@ async function submitPicks() {
   btn.textContent = 'Submit';
 }
 
-function filterPos(fixtureId, pos, tabEl) {
+function sortMatch(fixtureId, mode, tabEl) {
   const matchBlock = document.getElementById('match-' + fixtureId);
   matchBlock.querySelectorAll('.pos-tab').forEach(t => t.classList.remove('active'));
   tabEl.classList.add('active');
-  matchBlock.querySelectorAll('.phex-card').forEach(card => {
-    if (pos === 'ALL' || card.dataset.pos === pos) {
-      card.classList.remove('hidden');
-    } else {
-      card.classList.add('hidden');
-    }
-  });
+  const row = matchBlock.querySelector('.player-row');
+  const cards = Array.from(row.querySelectorAll('.phex-card'));
+  cards.forEach(c => c.classList.remove('hidden'));
+  if (mode === 'all') {
+    // Default: home team first, then by position
+    cards.sort((a, b) => {
+      const aIdx = parseInt(a.dataset.origIdx || '0');
+      const bIdx = parseInt(b.dataset.origIdx || '0');
+      return aIdx - bIdx;
+    });
+  } else if (mode === 'avgrank') {
+    cards.sort((a, b) => parseFloat(a.dataset.avgrank) - parseFloat(b.dataset.avgrank));
+  } else if (mode === 'form') {
+    cards.sort((a, b) => parseFloat(a.dataset.form) - parseFloat(b.dataset.form));
+  } else if (mode === 'goats') {
+    cards.sort((a, b) => parseInt(b.dataset.goats) - parseInt(a.dataset.goats));
+  }
+  cards.forEach(c => row.appendChild(c));
 }
 
 // ===== LIVE TAB =====
@@ -1529,21 +1579,19 @@ function buildProfileHeader(name, team, pos, ph) {
 function buildProfileStats(history) {
   if (!history || !history.length) return buildProfileStatsMock();
   var played = history.filter(h => h.minutes > 0);
+  var ranked = played.filter(h => h.bps_rank);
+  var goatCount = ranked.filter(h => h.bps_rank === 1).length;
+  var avgRank = ranked.length > 0 ? (ranked.reduce((s, h) => s + h.bps_rank, 0) / ranked.length).toFixed(1) : '-';
+  var last6 = ranked.slice(-6);
+  var formRank = last6.length > 0 ? (last6.reduce((s, h) => s + h.bps_rank, 0) / last6.length).toFixed(1) : '-';
   var totalBps = played.reduce((s, h) => s + (h.bps || 0), 0);
-  var avgBps = played.length > 0 ? (totalBps / played.length).toFixed(1) : '0.0';
-  var last6 = played.slice(-6);
-  var form = last6.length > 0 ? (last6.reduce((s, h) => s + (h.bps || 0), 0) / last6.length).toFixed(1) : '0.0';
-  var goatCount = played.filter(h => h.bps_rank === 1).length;
-  var avgRank = played.filter(h => h.bps_rank).length > 0
-    ? (played.filter(h => h.bps_rank).reduce((s, h) => s + h.bps_rank, 0) / played.filter(h => h.bps_rank).length).toFixed(1) : '-';
   return '<div class="mb-profile-stats">'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgBps + '</div><div class="mb-stat-label">Avg BPS</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + form + '</div><div class="mb-stat-label">Form (L6)</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + goatCount + ' \uD83D\uDC51</div><div class="mb-stat-label">GOATs</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgRank + '</div><div class="mb-stat-label">Avg Rank</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + formRank + '</div><div class="mb-stat-label">Form (L6)</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
     + '</div>'
     + '<div class="mb-profile-stats" style="margin-top:0;border-top:none;padding-top:0">'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgRank + '</div><div class="mb-stat-label">Avg Rank</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + played.length + '</div><div class="mb-stat-label">Games</div></div>'
     + '</div>';
 }
