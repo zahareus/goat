@@ -856,6 +856,9 @@ async function loadGWData(gw) {
 
   viewGW = gw;
   updateGWNav();
+  // Clear stale data from previous GW
+  selections = {};
+  results = {};
 
   try {
     // Cache gw_config if not cached
@@ -955,6 +958,7 @@ async function loadPlayers() {
 }
 
 async function loadResults() {
+  results = {};
   if (!fixtures.length) return;
   const fixtureIds = fixtures.map(f => f.id);
   const { data } = await sb.from('results').select('*').in('fixture_id', fixtureIds).order('bps', { ascending: false });
@@ -1093,8 +1097,8 @@ function renderMatchBlocks() {
   const submitted = hasSubmitted();
   // Before submit: block if no scheduled fixtures left (global deadline passed)
   const globalDeadlinePassed = !submitted && (!firstKO || now >= firstKO);
-  // Lock all matches if viewing non-active GW
-  const notActiveGW = viewGW !== activeGW;
+  // Lock all matches if viewing past GW
+  const notActiveGW = viewGW < activeGW;
 
   let html = '';
   for (let idx = 0; idx < fixtures.length; idx++) {
@@ -1178,7 +1182,7 @@ function getPlayersForFixture(f) {
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
   if (!currentUser) { showAuthModal(); return; }
-  if (viewGW !== activeGW) { showToast('Cannot pick for this gameweek'); return; }
+  if (viewGW < activeGW) { showToast('Cannot pick for past gameweeks'); return; }
   if (locked) { showToast('This match is locked'); return; }
 
   const matchBlock = document.getElementById('match-' + fixtureId);
@@ -1226,7 +1230,7 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
 }
 
 async function saveSinglePick(fixtureId, elementId) {
-  if (!currentUser || viewGW !== activeGW) return;
+  if (!currentUser || viewGW < activeGW) return;
   const existing = userPicks[fixtureId];
   try {
     if (existing) {
@@ -1253,7 +1257,7 @@ async function saveSinglePick(fixtureId, elementId) {
 }
 
 async function deleteSinglePick(fixtureId) {
-  if (!currentUser || viewGW !== activeGW) return;
+  if (!currentUser || viewGW < activeGW) return;
   const existing = userPicks[fixtureId];
   if (!existing) return;
   try {
@@ -1311,7 +1315,7 @@ function renderStrip() {
 }
 
 async function submitPicks() {
-  if (!currentUser || viewGW !== activeGW) return;
+  if (!currentUser || viewGW < activeGW) return;
   const btn = document.getElementById('strip-submit');
   btn.disabled = true;
   btn.textContent = 'Saving...';
@@ -2021,7 +2025,7 @@ function switchTab(name) {
 
   // Show/hide team strip — only show on pick tab for active GW
   var strip = document.getElementById('team-strip');
-  if (strip) strip.style.display = (name === 'pick' && viewGW === activeGW) ? '' : 'none';
+  if (strip) strip.style.display = (name === 'pick' && viewGW >= activeGW) ? '' : 'none';
 
   closeMenu();
 
