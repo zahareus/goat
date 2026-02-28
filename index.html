@@ -480,13 +480,14 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 .mt2-change:hover{background:#BFB294;color:#111}
 .mt2-actions{display:flex;gap:6px;margin-top:6px}
 .mt2-save,.mt2-cancel{
+  flex:1;min-width:48px;text-align:center;
   font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;
-  padding:3px 8px;cursor:pointer;border:1px solid;
+  padding:4px 6px;cursor:pointer;border:none;color:#fff;
 }
-.mt2-save{background:#BFB294;color:#111;border-color:#BFB294}
-.mt2-save:hover{background:#d4c9a8}
-.mt2-cancel{background:none;color:#888;border-color:#444}
-.mt2-cancel:hover{color:#fff;border-color:#888}
+.mt2-save{background:#2e7d32}
+.mt2-save:hover{background:#388e3c}
+.mt2-cancel{background:#c62828}
+.mt2-cancel:hover{background:#d32f2f}
 .mt2-card.changing{border-color:#fff;box-shadow:0 0 12px rgba(191,178,148,0.3)}
 
 /* My Team change panel */
@@ -1181,12 +1182,29 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
   if (locked) { showToast('This match is locked'); return; }
 
   const matchBlock = document.getElementById('match-' + fixtureId);
+  const currentSel = selections[fixtureId];
+  const isDeselect = currentSel && currentSel.element_id === elementId;
 
   // Deselect all in this match
   matchBlock.querySelectorAll('.phex-card').forEach(c => {
     c.classList.remove('selected');
     c.querySelector('.phex-outer').classList.remove('selected');
   });
+
+  const badge = matchBlock.querySelector('.match-header > div:last-child');
+
+  if (isDeselect) {
+    // Toggle off — clear selection
+    delete selections[fixtureId];
+    badge.innerHTML = '';
+    renderStrip();
+
+    // If already submitted, delete the pick from DB
+    if (hasSubmitted() && userPicks[fixtureId]) {
+      deleteSinglePick(fixtureId);
+    }
+    return;
+  }
 
   // Select this card
   cardEl.classList.add('selected');
@@ -1196,8 +1214,6 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
   const code = parseInt(cardEl.dataset.code);
   const img = cardEl.dataset.ph;
 
-  // Update badge
-  const badge = matchBlock.querySelector('.match-header > div:last-child');
   badge.innerHTML = '<span class="match-selected-badge">\u2713 ' + name + '</span>';
 
   selections[fixtureId] = { element_id: elementId, code, name, img };
@@ -1232,6 +1248,20 @@ async function saveSinglePick(fixtureId, elementId) {
     showToast('Pick saved');
   } catch(e) {
     showToast('Error saving pick');
+    console.error(e);
+  }
+}
+
+async function deleteSinglePick(fixtureId) {
+  if (!currentUser || viewGW !== activeGW) return;
+  const existing = userPicks[fixtureId];
+  if (!existing) return;
+  try {
+    await sb.from('picks').delete().eq('id', existing.id);
+    await loadUserPicks();
+    showToast('Pick removed');
+  } catch(e) {
+    showToast('Error removing pick');
     console.error(e);
   }
 }
