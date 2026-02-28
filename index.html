@@ -588,15 +588,17 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 }
 
 /* ===== DRIVER.JS TOUR OVERRIDES ===== */
-.driver-popover{background:#1a1a1a !important;border:1px solid #BFB294 !important;color:#ccc !important}
-.driver-popover-title{color:#BFB294 !important;font-size:14px !important;font-weight:900 !important;letter-spacing:1px !important}
-.driver-popover-description{color:#bbb !important;font-size:13px !important;line-height:1.6 !important}
+.driver-popover{background:#1a1a1a !important;border:1px solid #BFB294 !important;color:#ccc !important;max-width:340px !important}
+.driver-popover .driver-popover-title{color:#BFB294 !important;font-size:14px !important;font-weight:900 !important;letter-spacing:1px !important}
+.driver-popover .driver-popover-description{color:#bbb !important;font-size:13px !important;line-height:1.6 !important}
 .driver-popover .driver-popover-progress-text{color:#777 !important}
-.driver-popover-prev-btn{background:#222 !important;color:#fff !important;border:1px solid #444 !important}
-.driver-popover-prev-btn:hover{background:#333 !important}
-.driver-popover-next-btn,.driver-popover-close-btn-text{background:#BFB294 !important;color:#111 !important;font-weight:700 !important}
-.driver-popover-next-btn:hover,.driver-popover-close-btn-text:hover{background:#d4c9a8 !important}
-.driver-active .driver-overlay{background:rgba(0,0,0,0.5) !important}
+.driver-popover .driver-popover-arrow{border-color:#1a1a1a !important}
+.driver-popover-footer .driver-popover-prev-btn{background:#222 !important;color:#fff !important;border:1px solid #444 !important;padding:5px 12px !important}
+.driver-popover-footer .driver-popover-prev-btn:hover{background:#333 !important}
+.driver-popover-footer .driver-popover-next-btn{background:#BFB294 !important;color:#111 !important;font-weight:700 !important;padding:5px 12px !important}
+.driver-popover-footer .driver-popover-next-btn:hover{background:#d4c9a8 !important}
+.driver-popover .driver-popover-close-btn{color:#666 !important}
+.driver-popover .driver-popover-close-btn:hover{color:#fff !important}
 .driver-active-element{box-shadow:0 0 0 3px #BFB294 !important}
 </style>
 </head>
@@ -847,9 +849,13 @@ function startTour() {
   var driverObj = window.driver.js.driver({
     showProgress: true,
     animate: true,
-    allowClose: true,
+    allowClose: false,
+    disableActiveInteraction: true,
     stagePadding: 8,
     stageRadius: 4,
+    nextBtnText: 'Next',
+    prevBtnText: 'Back',
+    doneBtnText: 'Done',
     onDestroyStarted: function() {
       localStorage.setItem('goat_tour_done', 'true');
       driverObj.destroy();
@@ -894,10 +900,19 @@ function startTour() {
         }
       },
       {
+        element: '#tab-btn-myteam',
+        popover: {
+          title: 'My Team',
+          description: 'See results for all your picks and make substitutions before matches kick off.',
+          side: 'bottom',
+          align: 'center'
+        }
+      },
+      {
         element: '#tab-btn-live',
         popover: {
-          title: 'Live Tab',
-          description: 'During matches, switch to Live to watch BPS scores update in real-time.',
+          title: 'Live',
+          description: 'During matches, switch here to watch BPS scores update in real-time.',
           side: 'bottom',
           align: 'center'
         }
@@ -906,7 +921,7 @@ function startTour() {
         element: '#tab-btn-standings',
         popover: {
           title: 'Standings',
-          description: 'Check Standings to see how you rank. Most GOATs wins, BPS breaks ties. Good luck!',
+          description: 'Check how you rank. Most GOATs wins, BPS breaks ties. Good luck!',
           side: 'bottom',
           align: 'center'
         }
