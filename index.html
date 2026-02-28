@@ -593,9 +593,10 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .driver-popover .driver-popover-description{color:#bbb !important;font-size:13px !important;line-height:1.6 !important}
 .driver-popover .driver-popover-progress-text{color:#777 !important}
 .driver-popover .driver-popover-arrow{border-color:#1a1a1a !important}
-.driver-popover-footer .driver-popover-prev-btn{background:#222 !important;color:#fff !important;border:1px solid #444 !important;padding:5px 12px !important}
+.driver-popover-footer button{text-shadow:none !important}
+.driver-popover-footer .driver-popover-prev-btn{background:#222 !important;color:#fff !important;border:1px solid #444 !important;padding:5px 12px !important;text-shadow:none !important}
 .driver-popover-footer .driver-popover-prev-btn:hover{background:#333 !important}
-.driver-popover-footer .driver-popover-next-btn{background:#BFB294 !important;color:#111 !important;font-weight:700 !important;padding:5px 12px !important}
+.driver-popover-footer .driver-popover-next-btn{background:#BFB294 !important;color:#111 !important;font-weight:700 !important;padding:5px 12px !important;text-shadow:none !important}
 .driver-popover-footer .driver-popover-next-btn:hover{background:#d4c9a8 !important}
 .driver-popover .driver-popover-close-btn{color:#666 !important}
 .driver-popover .driver-popover-close-btn:hover{color:#fff !important}
@@ -876,7 +877,7 @@ function startTour() {
         element: '#pick-matches .match-block',
         popover: {
           title: 'Match Block',
-          description: 'Here\'s a match. Scroll through the players and pick who you think will be the GOAT.',
+          description: 'Each match lists players from both teams. Use position filters (DEF, MID, FWD) to narrow down. Watch for availability dots \u2014 they show who\'s fit, doubtful, or out.',
           side: 'bottom',
           align: 'center'
         }
@@ -885,7 +886,7 @@ function startTour() {
         element: '#pick-matches .match-block .phex-card',
         popover: {
           title: 'Player Card',
-          description: 'Tap a player to select them. Gold border = your pick. Stats below: Avg BPS Rank, Form, GOAT count.',
+          description: 'Tap a player to select them \u2014 gold border = your pick. Tap the \u24D8 icon to open their full profile with BPS history and stats.',
           side: 'bottom',
           align: 'center'
         }
@@ -936,19 +937,33 @@ function maybeStartTour() {
   var forcetour = window.location.search.includes('tour');
   if (!forcetour && !currentUser) return;
   if (!forcetour && localStorage.getItem('goat_tour_done') === 'true') return;
-  // Force-show pick tab content for tour (even if GW is locked)
-  document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
-  document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
-  document.getElementById('tab-pick').classList.add('active');
-  document.getElementById('tab-btn-pick').classList.add('active');
-  var strip = document.getElementById('team-strip');
-  if (strip) strip.style.display = '';
-  setTimeout(function() {
-    // Verify DOM elements exist before starting
-    if (document.querySelector('#pick-matches .match-block') && document.querySelector('#pick-matches .phex-card')) {
-      startTour();
-    }
-  }, 500);
+
+  // If current GW is locked, load next GW for the tour
+  var tourGW = viewGW;
+  if (isViewGWPickLocked() && maxGW && viewGW < maxGW) {
+    tourGW = viewGW + 1;
+  }
+
+  function showTourOnPickTab() {
+    document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('tab-pick').classList.add('active');
+    document.getElementById('tab-btn-pick').classList.add('active');
+    var strip = document.getElementById('team-strip');
+    if (strip) strip.style.display = '';
+    setTimeout(function() {
+      if (document.querySelector('#pick-matches .match-block') && document.querySelector('#pick-matches .phex-card')) {
+        startTour();
+      }
+    }, 500);
+  }
+
+  if (tourGW !== viewGW) {
+    // Load next GW data first, then show tour
+    loadGWData(tourGW).then(function() { showTourOnPickTab(); });
+  } else {
+    showTourOnPickTab();
+  }
 }
 
 // ===== AUTH =====
