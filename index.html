@@ -422,18 +422,18 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 tr.my-row{background:#1a1a12}
 tr.separator td{padding:4px 12px;color:#555;font-size:10px;text-align:center;background:#111}
 tr.lb-picks-row{background:#111}
-tr.lb-picks-row td{padding:6px 12px 10px}
 tr.lb-pick-tr{background:#111}
-tr.lb-pick-tr td{padding:4px 12px;border-bottom:1px solid #1a1a1a;font-size:11px}
-.lb-pick-match{color:#666;font-weight:700;white-space:nowrap}
-.lb-pick-detail{color:#777;font-size:10px}
-.lb-pick-detail .live{color:#ff4444;font-weight:700;font-size:11px}
-.lb-pick-detail .ft{color:#555}
-.lb-pick-detail .pname{color:#ccc;font-weight:700;margin-left:6px}
-.lb-pick-detail .pname.hidden{color:#444;font-weight:400;font-style:italic;margin-left:6px}
-.lb-pick-detail .goat{color:#ffd700;font-size:10px;margin-left:3px}
+tr.lb-pick-tr td{padding:5px 12px;border-bottom:1px solid #1a1a1a;font-size:11px;vertical-align:middle}
+td.lb-pick-info{color:#777}
+td.lb-pick-info .match{color:#666;font-weight:700;margin-right:8px}
+td.lb-pick-info .st{color:#777;font-size:10px;margin-right:8px}
+td.lb-pick-info .st.live{color:#ff4444;font-weight:700;font-size:11px}
+td.lb-pick-info .st.ft{color:#555}
+td.lb-pick-info .pname{color:#ccc;font-weight:700}
+td.lb-pick-info .pname.hidden{color:#444;font-weight:400;font-style:italic}
+td.lb-pick-info .goat{color:#ffd700;font-size:10px;margin-left:3px}
 .lb-pick-rank-cell{color:#BFB294;font-weight:900;text-align:center}
-.lb-pick-bps-cell{color:#666;font-size:10px;text-align:right}
+.lb-pick-bps-cell{color:#888;font-weight:700;text-align:right}
 
 /* ===== RULES PAGE ===== */
 .page-overlay{
@@ -1866,14 +1866,14 @@ function buildPicksRow(rowId, picks, gwFixtures) {
 
     let stHtml = '';
     if (f.status === 'ft') {
-      stHtml = '<span class="ft">FT</span>';
+      stHtml = '<span class="st ft">FT</span>';
     } else if (f.status === 'live') {
-      stHtml = '<span class="live">' + f.minutes + "'" + '</span>';
+      stHtml = '<span class="st live">' + f.minutes + "'" + '</span>';
     } else {
       const ko = new Date(f.kickoff_time);
       const day = ko.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
       const time = ko.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      stHtml = day + ' ' + time;
+      stHtml = '<span class="st">' + day + ' ' + time + '</span>';
     }
 
     // Hide player info for unstarted matches (anti-spoiler)
@@ -1890,8 +1890,7 @@ function buildPicksRow(rowId, picks, gwFixtures) {
     }
 
     rows += '<tr class="lb-pick-tr picks-g' + rowId + '" style="display:none">'
-      + '<td class="lb-pick-match">' + matchLabel + '</td>'
-      + '<td class="lb-pick-detail">' + stHtml + playerHtml + '</td>'
+      + '<td colspan="2" class="lb-pick-info"><span class="match">' + matchLabel + '</span>' + stHtml + playerHtml + '</td>'
       + '<td class="lb-pick-rank-cell">' + rankText + '</td>'
       + '<td class="lb-pick-bps-cell">' + bpsText + '</td>'
       + '</tr>';
