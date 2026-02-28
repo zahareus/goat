@@ -548,6 +548,42 @@ tr.lb-picks-row td{padding:6px 12px 8px}
   letter-spacing:0.5px;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;
 }
 .toast.show{opacity:1}
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 480px) {
+  .nav{padding:0 12px;height:50px}
+  .nav-logo-text{font-size:14px;letter-spacing:2px}
+  .nav-logo-img{width:30px;height:30px}
+  .gw-nav-label{font-size:12px;min-width:50px}
+  .tabs .tab{padding:11px 4px;font-size:10px;letter-spacing:0.5px}
+  .match-header{padding:8px 12px}
+  .match-teams{font-size:13px}
+  .match-num-hex{width:28px;height:32px;font-size:11px}
+  .player-row{padding:0 10px;gap:4px}
+  .phex-card{width:72px}
+  .phex-outer{width:66px;height:76px}
+  .phex-inner{width:59px;height:68px}
+  .phex-name{font-size:9px;max-width:60px}
+  .phex-name-wrap{width:72px}
+  .lv-card{width:94px;padding:6px 4px 8px}
+  .lv-name{font-size:9px;max-width:86px}
+  .live-score-row{gap:10px}
+  .live-team-name{font-size:14px}
+  .live-score{font-size:26px}
+  .mt2-card{width:130px}
+  .mt2-name{max-width:110px;font-size:10px}
+  .team-strip{padding:6px 10px}
+  .strip-slot{width:24px;height:28px}
+  .strip-submit{padding:6px 14px;font-size:10px}
+  .lb-table td{padding:8px 10px}
+  .lbp-grid{grid-template-columns:80px 1fr 30px 36px;font-size:10px}
+  .lb-your-rank{font-size:26px}
+  .mb-profile-header{padding:16px 16px 14px;gap:14px}
+  .mb-profile-hex-outer{width:70px;height:80px}
+  .mb-profile-hex-inner{width:64px;height:73px}
+  .mb-profile-name{font-size:16px}
+  .page-body{padding:20px 16px}
+}
 </style>
 </head>
 <body>
@@ -666,33 +702,48 @@ tr.lb-picks-row td{padding:6px 12px 8px}
   </div>
   <div class="page-body">
     <h3>How to Play</h3>
-    <p>GOAT is a fantasy game where you pick the <strong>Greatest Of All Time</strong> (best performer) for each Premier League match in a gameweek.</p>
+    <p>GOAT is a fantasy game where you pick the <strong>Greatest Of All Time</strong> (best performer) for each Premier League match in a gameweek. No transfers, no budget — just pure prediction skill.</p>
 
     <h3>Picking</h3>
     <ul>
-      <li>For each match in the gameweek, pick <strong>one player</strong> you think will be the GOAT (highest BPS)</li>
+      <li>For each match in the gameweek, pick <strong>one player</strong> you think will be the GOAT</li>
       <li>You can pick from <strong>either team</strong> in each match</li>
-      <li>Picks lock at <strong>kickoff</strong> of each individual match</li>
+      <li>Picks lock at <strong>kickoff</strong> of each individual match — not the whole gameweek</li>
       <li>You can change your pick any time before that match kicks off</li>
+      <li>Use the <strong>My Team</strong> tab to review and change your picks</li>
+      <li>Player stats (avg rank, form, GOAT count) help you make smarter picks</li>
     </ul>
+
+    <h3>What is GOAT?</h3>
+    <p>The GOAT of each match is the player with the <strong>highest BPS</strong> (Bonus Points System) at full time. Crowned with a gold card and a crown badge.</p>
 
     <h3>Scoring</h3>
     <ul>
-      <li>The GOAT of each match is the player with the <strong>highest BPS</strong> (Bonus Points System) at full time</li>
-      <li>BPS is calculated by the official FPL system based on match actions</li>
-      <li>If your pick is the GOAT, you earn a <strong>GOAT point</strong></li>
-      <li>Your total BPS across all picks is used as a tiebreaker</li>
+      <li>If your pick is the GOAT of their match, you earn a <strong>GOAT point</strong></li>
+      <li>You also accumulate <strong>BPS</strong> from all your picks across all matches</li>
+      <li>Standings are ranked by: <strong>GOATs first</strong>, then total BPS as tiebreaker</li>
     </ul>
 
     <h3>Standings</h3>
     <ul>
-      <li>Players are ranked by <strong>total GOATs</strong> (correct picks)</li>
-      <li>Tiebreaker: <strong>total BPS</strong> from all picks</li>
-      <li>Use the GW switcher to view historical standings</li>
+      <li><strong>Gameweek view:</strong> rankings for a single gameweek</li>
+      <li><strong>Season view:</strong> cumulative rankings across all gameweeks</li>
+      <li>Tap a manager's name to see their individual picks</li>
+      <li>Use the GW arrows to browse past and future gameweeks</li>
+    </ul>
+
+    <h3>Live Tab</h3>
+    <ul>
+      <li>Follow BPS leaderboards during live matches (updates every 60 seconds)</li>
+      <li>Your pick is highlighted with a gold border</li>
+      <li>The current GOAT leader gets a gold card</li>
     </ul>
 
     <h3>BPS Explained</h3>
-    <p>The Bonus Points System awards points based on match actions: goals, assists, clean sheets, key passes, tackles, saves, and more. It penalises for yellow/red cards, own goals, and fouls. Data is sourced from the official FPL API.</p>
+    <p>The Bonus Points System is calculated by the official FPL system. It awards points for goals, assists, clean sheets, key passes, tackles, saves, and more. It penalises for yellow/red cards, own goals, missed penalties, and fouls. The player with the highest BPS in each match is the GOAT.</p>
+
+    <h3>Notifications</h3>
+    <p>Connect Telegram in your Profile to receive alerts: deadline reminders, lineup announcements, match results, and gameweek summaries.</p>
   </div>
 </div>
 
@@ -922,6 +973,14 @@ async function loadGWData(gw) {
   userPicks = {};
   selections = {};
 
+  // Show loading in active tab
+  const activeTab = document.querySelector('.tab-content.active');
+  if (activeTab) {
+    const prev = activeTab.innerHTML;
+    activeTab.setAttribute('data-prev', '1');
+    activeTab.innerHTML = '<div class="loading-spinner">Loading GW ' + gw + '...</div>';
+  }
+
   try {
     // Cache gw_config if not cached
     if (!gwConfigs[gw]) {
@@ -967,15 +1026,9 @@ function updateTabStates() {
     liveBtn.textContent = 'Live';
   }
 
-  // My Team tab: locked if no picks for viewGW or guest
-  const hasPicks = currentUser && Object.keys(userPicks).length > 0;
-  if (!hasPicks) {
-    myteamBtn.classList.add('locked');
-    myteamBtn.innerHTML = 'My Team <span class="lock-icon">&#x1F512;</span>';
-  } else {
-    myteamBtn.classList.remove('locked');
-    myteamBtn.textContent = 'My Team';
-  }
+  // My Team tab: always accessible (has proper empty states)
+  myteamBtn.classList.remove('locked');
+  myteamBtn.textContent = 'My Team';
 }
 
 function isViewGWPickLocked() {
@@ -1769,7 +1822,11 @@ function renderMyTeam() {
   document.getElementById('mt-subtitle').textContent = cfg ? (cfg.label || 'Gameweek ' + viewGW) : '';
 
   if (!Object.keys(userPicks).length) {
-    strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet</h3><p>Pick your GOATs on the Pick Team tab</p></div>';
+    if (!currentUser) {
+      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F512;</span><h3>Sign in to play</h3><p>Create an account to pick your GOATs and track your results</p><div style="margin-top:16px"><button onclick="showAuthModal()" style="background:#BFB294;color:#111;border:none;padding:10px 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Sign In</button></div></div>';
+    } else {
+      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet for GW' + viewGW + '</h3><p>Head to the Pick Team tab to choose your GOATs</p><div style="margin-top:16px"><button onclick="switchTab(\'pick\')" style="background:#BFB294;color:#111;border:none;padding:10px 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Pick Team</button></div></div>';
+    }
     return;
   }
 
@@ -2080,7 +2137,9 @@ function buildPicksRow(rowId, picks, gwFixtures) {
     const pl = players[p.element_id];
     if (!f || !pl) continue;
 
-    const matchLabel = f.home_short + ' \u2013 ' + f.away_short;
+    let matchLabel = f.home_short + ' \u2013 ' + f.away_short;
+    if (f.status === 'ft') matchLabel += ' ' + f.home_score + '-' + f.away_score;
+    else if (f.status === 'live') matchLabel += ' ' + f.home_score + '-' + f.away_score;
     const started = f.status === 'ft' || f.status === 'live';
 
     let playerText, rankText, bpsText;
@@ -2206,6 +2265,10 @@ function buildProfileHeader(name, team, pos, ph) {
 function buildProfileStats(history) {
   if (!history || !history.length) return buildProfileStatsMock();
   var played = history.filter(h => h.minutes > 0);
+  // If bps_rank is missing, calculate it from BPS per fixture
+  var byFixture = {};
+  played.forEach(h => { if (!byFixture[h.fixture_id]) byFixture[h.fixture_id] = []; byFixture[h.fixture_id].push(h); });
+  Object.values(byFixture).forEach(rows => { rows.sort((a,b) => b.bps - a.bps); rows.forEach((r,i) => { if (!r.bps_rank) r.bps_rank = i + 1; }); });
   var ranked = played.filter(h => h.bps_rank);
   var goatCount = ranked.filter(h => h.bps_rank === 1).length;
   var avgRank = ranked.length > 0 ? (ranked.reduce((s, h) => s + h.bps_rank, 0) / ranked.length).toFixed(1) : '-';
@@ -2241,6 +2304,10 @@ function buildProfileHistory(history) {
   if (!history || !history.length) {
     return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
   }
+  // Ensure bps_rank exists (fallback calc for old data)
+  var byFix = {};
+  history.forEach(function(h) { if (h.minutes > 0) { if (!byFix[h.fixture_id]) byFix[h.fixture_id] = []; byFix[h.fixture_id].push(h); } });
+  Object.values(byFix).forEach(function(rows) { rows.sort(function(a,b) { return b.bps - a.bps; }); rows.forEach(function(r,i) { if (!r.bps_rank) r.bps_rank = i + 1; }); });
   // Build lookup by round
   var byRound = {};
   history.forEach(function(h) { byRound[h.round] = h; });
@@ -2288,8 +2355,6 @@ function switchTab(name) {
   if (changingFixtureId) mtClosePanel();
   // Prevent switching to locked pick tab
   if (name === 'pick' && isViewGWPickLocked()) return;
-  // Prevent switching to My Team if no picks or guest
-  if (name === 'myteam' && (!currentUser || Object.keys(userPicks).length === 0)) return;
 
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
