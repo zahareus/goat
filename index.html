@@ -89,6 +89,8 @@ body{
   border-bottom:3px solid transparent;transition:all .2s;
 }
 .tab.active{color:#BFB294;border-bottom-color:#BFB294}
+.tab.locked{color:#444;cursor:not-allowed;pointer-events:none}
+.tab.locked .lock-icon{display:inline;font-size:9px;margin-left:2px}
 .tab-content{display:none}
 .tab-content.active{display:block}
 
@@ -512,7 +514,7 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 
 <!-- NAV -->
 <div class="nav">
-  <div class="nav-logo" onclick="switchTab('pick')">
+  <div class="nav-logo" onclick="switchTab(isPickLocked()?'myteam':'pick')">
     <img src="assets/logo.png" class="nav-logo-img" alt="">
     <div class="nav-logo-text">GOAT</div>
   </div>
@@ -535,10 +537,10 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 
 <!-- TABS -->
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('pick')">Pick Team</div>
-  <div class="tab" onclick="switchTab('live')">Live</div>
-  <div class="tab" onclick="switchTab('myteam')">My Team</div>
-  <div class="tab" onclick="switchTab('standings')">Standings</div>
+  <div class="tab active" id="tab-btn-pick" onclick="switchTab('pick')">Pick Team</div>
+  <div class="tab" id="tab-btn-myteam" onclick="switchTab('myteam')">My Team</div>
+  <div class="tab" id="tab-btn-live" onclick="switchTab('live')">Live</div>
+  <div class="tab" id="tab-btn-standings" onclick="switchTab('standings')">Standings</div>
 </div>
 
 <!-- TAB 1: PICK TEAM -->
@@ -777,6 +779,12 @@ async function loadAppData() {
   renderMyTeam();
   loadStandings(standingsGW);
   loadProfileData();
+  updatePickLock();
+
+  // Auto-switch to My Team if pick is locked
+  if (isPickLocked()) {
+    switchTab('myteam');
+  }
 }
 
 async function loadFixtures() {
@@ -1659,6 +1667,7 @@ function buildProfileHistory(history) {
 
 // ===== NAVIGATION HELPERS =====
 function goToMatch(fixtureId) {
+  if (isPickLocked()) return;
   switchTab('pick');
   setTimeout(function() {
     var el = document.getElementById('match-' + fixtureId);
@@ -1667,12 +1676,30 @@ function goToMatch(fixtureId) {
 }
 
 // ===== UI HELPERS =====
+function isPickLocked() {
+  return hasSubmitted() && fixtures.some(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
+}
+
+function updatePickLock() {
+  var btn = document.getElementById('tab-btn-pick');
+  if (!btn) return;
+  if (isPickLocked()) {
+    btn.classList.add('locked');
+    btn.innerHTML = 'Pick Team <span class="lock-icon">&#x1F512;</span>';
+  } else {
+    btn.classList.remove('locked');
+    btn.textContent = 'Pick Team';
+  }
+}
+
 function switchTab(name) {
+  // Prevent switching to locked pick tab
+  if (name === 'pick' && isPickLocked()) return;
+
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const tabs = ['pick','live','myteam','standings'];
-  document.querySelectorAll('.tab')[tabs.indexOf(name)].classList.add('active');
+  document.getElementById('tab-btn-' + name).classList.add('active');
 
   // Show/hide team strip
   var strip = document.getElementById('team-strip');
