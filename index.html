@@ -423,15 +423,18 @@ tr.my-row{background:#1a1a12}
 tr.separator td{padding:4px 12px;color:#555;font-size:10px;text-align:center;background:#111}
 tr.lb-picks-row{background:#111}
 tr.lb-picks-row td{padding:6px 12px 10px}
-.lb-picks-list{display:flex;flex-direction:column;gap:3px}
-.lb-pick-item{display:flex;gap:10px;font-size:11px;align-items:baseline}
-.lb-pick-match{color:#666;min-width:72px;font-weight:700}
-.lb-pick-st{min-width:52px;color:#777}
-.lb-pick-st.live{color:#ff4444;font-weight:700}
+.lb-picks-list{display:flex;flex-direction:column;gap:0}
+.lb-pick-item{display:grid;grid-template-columns:80px 110px 1fr 32px 36px 18px;gap:0 6px;font-size:11px;align-items:center;padding:3px 0;border-bottom:1px solid #1a1a1a}
+.lb-pick-item:last-child{border-bottom:none}
+.lb-pick-match{color:#666;font-weight:700;white-space:nowrap}
+.lb-pick-st{color:#777;font-size:10px;white-space:nowrap}
+.lb-pick-st.live{color:#ff4444;font-weight:700;font-size:11px}
 .lb-pick-st.ft{color:#555}
-.lb-pick-player{color:#ccc;font-weight:700}
-.lb-pick-rank{color:#BFB294;font-weight:900;margin-left:4px}
-.lb-pick-motm{color:#ffd700;font-size:10px;margin-left:2px}
+.lb-pick-player{color:#ccc;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-pick-player.hidden{color:#444;font-weight:400;font-style:italic}
+.lb-pick-rank{color:#BFB294;font-weight:900;text-align:center}
+.lb-pick-bps{color:#666;font-size:10px;text-align:right;white-space:nowrap}
+.lb-pick-motm{color:#ffd700;font-size:10px;text-align:center}
 
 /* ===== RULES PAGE ===== */
 .page-overlay{
@@ -1845,27 +1848,59 @@ async function loadStandings(gw) {
 }
 
 function buildPicksRow(rowId, picks, gwFixtures) {
+  // Sort picks by fixture kickoff time
+  const sortedPicks = [...picks].sort((a, b) => {
+    const fa = gwFixtures.find(x => x.id === a.fixture_id);
+    const fb = gwFixtures.find(x => x.id === b.fixture_id);
+    if (!fa || !fb) return 0;
+    return new Date(fa.kickoff_time) - new Date(fb.kickoff_time);
+  });
+
   let items = '';
-  for (const p of picks) {
+  for (const p of sortedPicks) {
     const f = gwFixtures.find(x => x.id === p.fixture_id);
     const pl = players[p.element_id];
     if (!f || !pl) continue;
 
-    const matchLabel = f.home_short + ' - ' + f.away_short;
+    const matchLabel = f.home_short + ' \u2013 ' + f.away_short;
+    const started = f.status === 'ft' || f.status === 'live';
     let stClass = '';
     let stText = '';
-    if (f.status === 'ft') { stClass = ' ft'; stText = 'FT'; }
-    else if (f.status === 'live') { stClass = ' live'; stText = f.minutes + "'"; }
-    else {
+    if (f.status === 'ft') {
+      stClass = ' ft';
+      stText = 'FT';
+    } else if (f.status === 'live') {
+      stClass = ' live';
+      stText = f.minutes + "'";
+    } else {
       const ko = new Date(f.kickoff_time);
-      stText = ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      const day = ko.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+      const time = ko.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      stText = day + ' ' + time;
     }
 
-    const rankText = p.rank > 0 ? '#' + p.rank : '–';
-    const bpsText = p.bps > 0 ? p.bps + ' BPS' : '';
-    const goatMark = p.isGoat ? ' <span class="lb-pick-motm">\uD83D\uDC51</span>' : '';
+    // Hide player info for unstarted matches (anti-spoiler)
+    let playerHtml, rankText, bpsText, goatMark;
+    if (started) {
+      playerHtml = '<span class="lb-pick-player">' + esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')</span>';
+      rankText = p.rank > 0 ? '#' + p.rank : '\u2013';
+      bpsText = p.bps > 0 ? p.bps : '';
+      goatMark = p.isGoat ? '\uD83D\uDC51' : '';
+    } else {
+      playerHtml = '<span class="lb-pick-player hidden">\u2014</span>';
+      rankText = '';
+      bpsText = '';
+      goatMark = '';
+    }
 
-    items += '<div class="lb-pick-item"><span class="lb-pick-match">' + matchLabel + '</span><span class="lb-pick-st' + stClass + '">' + stText + '</span><span class="lb-pick-player">' + esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')</span><span class="lb-pick-rank">' + rankText + '</span><span style="color:#666;font-size:10px;margin-left:4px">' + bpsText + '</span>' + goatMark + '</div>';
+    items += '<div class="lb-pick-item">'
+      + '<span class="lb-pick-match">' + matchLabel + '</span>'
+      + '<span class="lb-pick-st' + stClass + '">' + stText + '</span>'
+      + playerHtml
+      + '<span class="lb-pick-rank">' + rankText + '</span>'
+      + '<span class="lb-pick-bps">' + bpsText + '</span>'
+      + '<span class="lb-pick-motm">' + goatMark + '</span>'
+      + '</div>';
   }
   return '<tr class="lb-picks-row" id="picks-r' + rowId + '" style="display:none"><td colspan="4"><div class="lb-picks-list">' + items + '</div></td></tr>';
 }
