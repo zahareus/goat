@@ -271,6 +271,9 @@ async function handleGW(chatId, text) {
   const allElementIds = [...new Set(allPicks.map(p => p.element_id))];
   const fixtureIds = fixtures.map(f => f.id);
 
+  const myPickMap = {};
+  for (const p of myPicks) myPickMap[p.fixture_id] = p.element_id;
+
   const [players, results] = await Promise.all([
     allElementIds.length > 0
       ? sbSelect('players', `element_id=in.(${allElementIds.join(',')})&select=element_id,short_name,team_short`)
@@ -280,10 +283,8 @@ async function handleGW(chatId, text) {
 
   // Fetch FPL availability for scheduled match picks
   const scheduled = fixtures.filter(f => f.status === 'scheduled');
-  const myScheduledEids = scheduled.map(f => myPickMap[f.id]).filter(Boolean);
-  // Also try lineups from RotoWire
   let lineupsData = {};
-  let fplAvail = {}; // element_id -> chance_of_playing (null=available, 100=available, 75=doubt, 0/25=out)
+  let fplAvail = {};
   if (scheduled.length > 0) {
     const myEidsForScheduled = new Set();
     for (const p of myPicks) {
@@ -319,9 +320,6 @@ async function handleGW(chatId, text) {
     if (!resultMap[r.fixture_id]) resultMap[r.fixture_id] = {};
     resultMap[r.fixture_id][r.element_id] = r;
   }
-
-  const myPickMap = {};
-  for (const p of myPicks) myPickMap[p.fixture_id] = p.element_id;
 
   // Split fixtures into groups
   const finished = fixtures.filter(f => f.status === 'ft');
