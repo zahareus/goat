@@ -58,9 +58,11 @@ body{
 .nav-logo{display:flex;align-items:center;gap:10px;cursor:pointer}
 .nav-logo-img{width:36px;height:36px;object-fit:contain}
 .nav-logo-text{font-size:16px;font-weight:900;color:#fff;letter-spacing:3px;text-transform:uppercase}
-.nav-center{text-align:center}
-.nav-time-label{font-size:8px;color:#777;text-transform:lowercase;letter-spacing:1px;display:block}
-.nav-time-val{font-size:18px;font-weight:700;color:#fff;letter-spacing:2px;font-family:monospace}
+.nav-center{display:flex;align-items:center;gap:8px}
+.gw-nav-arrow{background:none;border:none;color:#666;font-size:18px;cursor:pointer;padding:4px 8px;transition:color .15s}
+.gw-nav-arrow:hover{color:#BFB294}
+.gw-nav-arrow:disabled{color:#333;cursor:not-allowed}
+.gw-nav-label{font-size:14px;font-weight:900;color:#fff;letter-spacing:2px;text-transform:uppercase;min-width:60px;text-align:center}
 .nav-right{display:flex;align-items:center;gap:12px;position:relative}
 .nav-menu-btn{
   display:flex;align-items:center;gap:6px;cursor:pointer;color:#aaa;
@@ -382,17 +384,6 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 .mt2-card.motm .mt2-bps{background:#7a6040;color:#fff}
 
 /* ===== LEADERBOARD TAB ===== */
-.lb-gw-switcher{
-  display:flex;align-items:center;justify-content:center;gap:12px;
-  padding:12px 16px;background:#111;border-bottom:1px solid #2a2a2a;
-}
-.lb-gw-btn{
-  background:none;border:1px solid #333;color:#888;padding:6px 12px;
-  font-size:11px;font-weight:700;cursor:pointer;
-}
-.lb-gw-btn:hover{border-color:#BFB294;color:#BFB294}
-.lb-gw-btn:disabled{opacity:0.3;cursor:not-allowed}
-.lb-gw-label{font-size:13px;font-weight:900;color:#fff;letter-spacing:1px;min-width:60px;text-align:center}
 .lb-header{background:#1a1a1a;padding:14px 16px;border-bottom:1px solid #2a2a2a}
 .lb-your-pos{
   background:linear-gradient(135deg,#1a1a12 0%,#222215 100%);
@@ -514,13 +505,14 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 
 <!-- NAV -->
 <div class="nav">
-  <div class="nav-logo" onclick="switchTab(isPickLocked()?'myteam':'pick')">
+  <div class="nav-logo" onclick="goHome()">
     <img src="assets/logo.png" class="nav-logo-img" alt="">
     <div class="nav-logo-text">GOAT</div>
   </div>
   <div class="nav-center">
-    <span class="nav-time-label">time</span>
-    <span class="nav-time-val" id="nav-clock">--:--</span>
+    <button class="gw-nav-arrow" id="gw-prev" onclick="changeViewGW(-1)">&larr;</button>
+    <span class="gw-nav-label" id="gw-nav-label">GW --</span>
+    <button class="gw-nav-arrow" id="gw-next" onclick="changeViewGW(1)">&rarr;</button>
   </div>
   <div class="nav-right">
     <button class="nav-menu-btn" onclick="toggleMenu()">
@@ -590,11 +582,6 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 
 <!-- TAB 4: STANDINGS -->
 <div id="tab-standings" class="tab-content">
-  <div class="lb-gw-switcher">
-    <button class="lb-gw-btn" id="lb-prev" onclick="changeStandingsGW(-1)">&larr;</button>
-    <div class="lb-gw-label" id="lb-gw-label">GW--</div>
-    <button class="lb-gw-btn" id="lb-next" onclick="changeStandingsGW(1)">&rarr;</button>
-  </div>
   <div id="standings-content">
     <div class="loading-spinner">Loading standings...</div>
   </div>
@@ -681,14 +668,16 @@ const FPL_TEAM_MAP = {"1":"ARS","2":"AVL","3":"BUR","4":"BOU","5":"BRE","6":"BHA
 
 // ===== STATE =====
 let currentUser = null;
-let currentGW = null;
-let gwConfig = null;
+const FIRST_GW = 28;
+let activeGW = null;     // "real" current GW from gw_config
+let viewGW = null;       // GW being viewed (nav switcher)
+let gwConfigs = {};      // gw -> config cache
+let gwLoading = false;   // prevent rapid switching race conditions
 let fixtures = [];
 let players = {};       // element_id -> player
 let results = {};       // fixture_id -> [{element_id, bps, is_goat}]
 let userPicks = {};     // fixture_id -> {element_id, id (pick uuid)}
 let selections = {};    // fixture_id -> {element_id, code, name, img} (unsaved UI state)
-let standingsGW = null;
 let playerStats = {};   // element_id -> {avgRank, formRank, goats}
 
 // ===== AUTH =====
@@ -755,40 +744,129 @@ function showAuth() {
 
 // ===== DATA LOADING =====
 async function loadAppData() {
-  // Load GW config
+  // Load GW config (active)
   const { data: gwData } = await sb.from('gw_config').select('*').eq('is_active', true).limit(1).single();
   if (gwData) {
-    gwConfig = gwData;
-    currentGW = gwData.gw;
-    standingsGW = gwData.gw;
+    activeGW = gwData.gw;
+    viewGW = gwData.gw;
+    gwConfigs[gwData.gw] = gwData;
   } else {
     document.getElementById('pick-gw-title').textContent = 'No active gameweek';
     return;
   }
 
-  // Load in parallel
-  await Promise.all([
-    loadFixtures(),
-    loadPlayers(),
-    loadUserPicks(),
-    loadPlayerStats()
-  ]);
-
-  renderPickTab();
-  renderLiveTab();
-  renderMyTeam();
-  loadStandings(standingsGW);
+  // Load players + stats once (they don't change per GW)
+  await Promise.all([loadPlayers(), loadPlayerStats()]);
   loadProfileData();
-  updatePickLock();
 
-  // Auto-switch to My Team if pick is locked
-  if (isPickLocked()) {
+  // Load GW-specific data
+  await loadGWData(viewGW);
+}
+
+// ===== GW NAVIGATION =====
+function changeViewGW(delta) {
+  const newGW = viewGW + delta;
+  if (newGW < FIRST_GW || newGW > activeGW + 1) return;
+  loadGWData(newGW);
+}
+
+function updateGWNav() {
+  document.getElementById('gw-nav-label').textContent = 'GW ' + viewGW;
+  document.getElementById('gw-prev').disabled = (viewGW <= FIRST_GW);
+  document.getElementById('gw-next').disabled = (viewGW >= activeGW + 1);
+}
+
+async function loadGWData(gw) {
+  if (gwLoading) return;
+  gwLoading = true;
+
+  viewGW = gw;
+  updateGWNav();
+
+  try {
+    // Cache gw_config if not cached
+    if (!gwConfigs[gw]) {
+      const { data: cfg } = await sb.from('gw_config').select('*').eq('gw', gw).limit(1).single();
+      if (cfg) gwConfigs[gw] = cfg;
+    }
+
+    // Load fixtures + picks in parallel
+    await Promise.all([loadFixtures(), loadUserPicks()]);
+    await loadResults();
+
+    // Render all tabs
+    renderPickTab();
+    renderLiveTab();
+    renderMyTeam();
+    loadStandings(viewGW);
+    updateTabStates();
+    autoSelectTab();
+  } finally {
+    gwLoading = false;
+  }
+}
+
+function updateTabStates() {
+  const pickBtn = document.getElementById('tab-btn-pick');
+  const myteamBtn = document.getElementById('tab-btn-myteam');
+
+  // Pick tab: locked if viewGW pick is locked
+  if (isViewGWPickLocked()) {
+    pickBtn.classList.add('locked');
+    pickBtn.innerHTML = 'Pick Team <span class="lock-icon">&#x1F512;</span>';
+  } else {
+    pickBtn.classList.remove('locked');
+    pickBtn.textContent = 'Pick Team';
+  }
+
+  // My Team tab: locked if no picks for viewGW
+  const hasPicks = Object.keys(userPicks).length > 0;
+  if (!hasPicks) {
+    myteamBtn.classList.add('locked');
+    myteamBtn.innerHTML = 'My Team <span class="lock-icon">&#x1F512;</span>';
+  } else {
+    myteamBtn.classList.remove('locked');
+    myteamBtn.textContent = 'My Team';
+  }
+}
+
+function isViewGWPickLocked() {
+  // Past GW: always locked
+  if (viewGW < activeGW) return true;
+  // Future GW: not locked (viewable)
+  if (viewGW > activeGW) return false;
+  // Active GW: locked if ALL fixtures started
+  if (!fixtures.length) return false;
+  return fixtures.every(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
+}
+
+function autoSelectTab() {
+  const hasPicks = Object.keys(userPicks).length > 0;
+  const locked = isViewGWPickLocked();
+
+  if (viewGW < activeGW) {
+    // Past GW → Standings
+    switchTab('standings');
+  } else if (locked && hasPicks) {
     switchTab('myteam');
+  } else if (locked && !hasPicks) {
+    switchTab('live');
+  } else {
+    switchTab('pick');
+  }
+}
+
+function goHome() {
+  if (viewGW === activeGW) {
+    // Already on active GW, just pick best tab
+    autoSelectTab();
+  } else {
+    loadGWData(activeGW);
   }
 }
 
 async function loadFixtures() {
-  const { data } = await sb.from('fixtures').select('*').eq('gw', currentGW).order('kickoff_time');
+  const { data } = await sb.from('fixtures').select('*').eq('gw', viewGW).order('kickoff_time');
   fixtures = data || [];
 }
 
@@ -810,8 +888,8 @@ async function loadResults() {
 }
 
 async function loadUserPicks() {
-  if (!currentUser || !currentGW) return;
-  const { data } = await sb.from('picks').select('*').eq('user_id', currentUser.id).eq('gw', currentGW);
+  if (!currentUser || !viewGW) return;
+  const { data } = await sb.from('picks').select('*').eq('user_id', currentUser.id).eq('gw', viewGW);
   userPicks = {};
   (data || []).forEach(p => { userPicks[p.fixture_id] = p; });
 
@@ -892,8 +970,9 @@ function isMatchLocked(f) {
 
 // ===== PICK TAB =====
 function renderPickTab() {
-  if (!gwConfig) return;
-  document.getElementById('pick-gw-title').textContent = gwConfig.label || ('Gameweek ' + currentGW);
+  const cfg = gwConfigs[viewGW];
+  if (!cfg) return;
+  document.getElementById('pick-gw-title').textContent = cfg.label || ('Gameweek ' + viewGW);
 
   // Show deadline = first kickoff time
   const firstKO = getFirstKickoff();
@@ -932,6 +1011,8 @@ function renderMatchBlocks() {
   const submitted = hasSubmitted();
   // Before submit: block if no scheduled fixtures left (global deadline passed)
   const globalDeadlinePassed = !submitted && (!firstKO || now >= firstKO);
+  // Lock all matches if viewing non-active GW
+  const notActiveGW = viewGW !== activeGW;
 
   let html = '';
   for (let idx = 0; idx < fixtures.length; idx++) {
@@ -939,8 +1020,8 @@ function renderMatchBlocks() {
     const matchNum = idx + 1;
     const ko = new Date(f.kickoff_time);
     const matchStarted = isMatchLocked(f);
-    // Always lock started matches. Before submit: also lock all if global deadline passed.
-    const locked = matchStarted || globalDeadlinePassed;
+    // Always lock started matches. Before submit: also lock all if global deadline passed. Lock all for non-active GW.
+    const locked = matchStarted || globalDeadlinePassed || notActiveGW;
     const sel = selections[f.id];
 
     // Get players for this fixture (both teams)
@@ -1014,6 +1095,7 @@ function getPlayersForFixture(f) {
 }
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
+  if (viewGW !== activeGW) { showToast('Cannot pick for this gameweek'); return; }
   if (locked) { showToast('This match is locked'); return; }
 
   const matchBlock = document.getElementById('match-' + fixtureId);
@@ -1046,7 +1128,7 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
 }
 
 async function saveSinglePick(fixtureId, elementId) {
-  if (!currentUser) return;
+  if (!currentUser || viewGW !== activeGW) return;
   const existing = userPicks[fixtureId];
   try {
     if (existing) {
@@ -1060,7 +1142,7 @@ async function saveSinglePick(fixtureId, elementId) {
         user_id: currentUser.id,
         fixture_id: fixtureId,
         element_id: elementId,
-        gw: currentGW
+        gw: viewGW
       });
     }
     // Update local state
@@ -1117,7 +1199,7 @@ function renderStrip() {
 }
 
 async function submitPicks() {
-  if (!currentUser) return;
+  if (!currentUser || viewGW !== activeGW) return;
   const btn = document.getElementById('strip-submit');
   btn.disabled = true;
   btn.textContent = 'Saving...';
@@ -1148,7 +1230,7 @@ async function submitPicks() {
           user_id: currentUser.id,
           fixture_id: fid,
           element_id: sel.element_id,
-          gw: currentGW
+          gw: viewGW
         });
       }
     }
@@ -1309,7 +1391,8 @@ function showLiveMatchContent(fixtureId) {
 // ===== MY TEAM TAB =====
 function renderMyTeam() {
   const strip = document.getElementById('mt-strip');
-  document.getElementById('mt-subtitle').textContent = gwConfig ? (gwConfig.label || 'Gameweek ' + currentGW) : '';
+  const cfg = gwConfigs[viewGW];
+  document.getElementById('mt-subtitle').textContent = cfg ? (cfg.label || 'Gameweek ' + viewGW) : '';
 
   if (!Object.keys(userPicks).length) {
     strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet</h3><p>Pick your GOATs on the Pick Team tab</p></div>';
@@ -1383,8 +1466,6 @@ function renderMyTeam() {
 
 // ===== STANDINGS TAB =====
 async function loadStandings(gw) {
-  standingsGW = gw;
-  document.getElementById('lb-gw-label').textContent = 'GW' + gw;
 
   const content = document.getElementById('standings-content');
   content.innerHTML = '<div class="loading-spinner">Loading standings...</div>';
@@ -1510,12 +1591,6 @@ function buildPicksRow(rowId, picks, gwFixtures) {
     items += '<div class="lb-pick-item"><span class="lb-pick-match">' + matchLabel + '</span><span class="lb-pick-st' + stClass + '">' + stText + '</span><span class="lb-pick-player">' + esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')</span><span class="lb-pick-rank">' + rankText + '</span><span style="color:#666;font-size:10px;margin-left:4px">' + bpsText + '</span>' + goatMark + '</div>';
   }
   return '<tr class="lb-picks-row" id="picks-r' + rowId + '" style="display:none"><td colspan="4"><div class="lb-picks-list">' + items + '</div></td></tr>';
-}
-
-function changeStandingsGW(delta) {
-  const newGW = standingsGW + delta;
-  if (newGW < 1 || newGW > 38) return;
-  loadStandings(newGW);
 }
 
 // ===== PROFILE =====
@@ -1667,7 +1742,7 @@ function buildProfileHistory(history) {
 
 // ===== NAVIGATION HELPERS =====
 function goToMatch(fixtureId) {
-  if (isPickLocked()) return;
+  if (isViewGWPickLocked()) return;
   switchTab('pick');
   setTimeout(function() {
     var el = document.getElementById('match-' + fixtureId);
@@ -1676,34 +1751,20 @@ function goToMatch(fixtureId) {
 }
 
 // ===== UI HELPERS =====
-function isPickLocked() {
-  return hasSubmitted() && fixtures.some(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
-}
-
-function updatePickLock() {
-  var btn = document.getElementById('tab-btn-pick');
-  if (!btn) return;
-  if (isPickLocked()) {
-    btn.classList.add('locked');
-    btn.innerHTML = 'Pick Team <span class="lock-icon">&#x1F512;</span>';
-  } else {
-    btn.classList.remove('locked');
-    btn.textContent = 'Pick Team';
-  }
-}
-
 function switchTab(name) {
   // Prevent switching to locked pick tab
-  if (name === 'pick' && isPickLocked()) return;
+  if (name === 'pick' && isViewGWPickLocked()) return;
+  // Prevent switching to My Team if no picks
+  if (name === 'myteam' && Object.keys(userPicks).length === 0) return;
 
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.getElementById('tab-btn-' + name).classList.add('active');
 
-  // Show/hide team strip
+  // Show/hide team strip — only show on pick tab for active GW
   var strip = document.getElementById('team-strip');
-  if (strip) strip.style.display = name === 'pick' ? '' : 'none';
+  if (strip) strip.style.display = (name === 'pick' && viewGW === activeGW) ? '' : 'none';
 
   closeMenu();
 
@@ -1711,7 +1772,7 @@ function switchTab(name) {
   if (name === 'pick') { loadFixtures().then(() => { renderPickTab(); }); }
   if (name === 'live') renderLiveTab();
   if (name === 'myteam') { Promise.all([loadFixtures(), loadResults()]).then(() => renderMyTeam()); }
-  if (name === 'standings') { loadStandings(standingsGW); }
+  if (name === 'standings') { loadStandings(viewGW); }
 }
 
 function togglePicks(rowId) {
@@ -1756,25 +1817,15 @@ function esc(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ===== CLOCK =====
-function updateClock() {
-  var now = new Date();
-  document.getElementById('nav-clock').textContent =
-    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-}
-
-// ===== AUTO-REFRESH (every 60s when on Live tab) =====
+// ===== AUTO-REFRESH (every 60s when on Live tab, only for active GW) =====
 setInterval(function() {
   var liveTab = document.getElementById('tab-live');
-  if (liveTab && liveTab.classList.contains('active')) {
+  if (liveTab && liveTab.classList.contains('active') && viewGW === activeGW) {
     renderLiveTab();
   }
 }, 60000);
 
 // ===== INIT =====
-updateClock();
-setInterval(updateClock, 10000);
-
 // Handle email input enter key
 document.getElementById('auth-email').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') handleAuth();
