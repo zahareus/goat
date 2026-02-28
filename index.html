@@ -625,6 +625,7 @@ tr.lb-picks-row td{padding:6px 12px 8px}
     <div id="nav-dropdown" class="nav-dropdown">
       <a id="menu-profile" onclick="openPage('profile')" style="display:none">Profile</a>
       <a onclick="openPage('rules')">Rules</a>
+      <a onclick="shareApp()">Invite Friends</a>
       <a id="menu-signin" onclick="showAuthModal();closeMenu()" style="display:none">Sign In</a>
       <a id="menu-signout" onclick="handleSignOut()" style="display:none">Sign Out</a>
     </div>
@@ -2388,6 +2389,25 @@ function toggleMenu() {
 
 function closeMenu() {
   document.getElementById('nav-dropdown').classList.remove('open');
+}
+
+async function shareApp() {
+  closeMenu();
+  const shareData = {
+    title: 'GOAT — Pick the Greatest',
+    text: 'Pick the best player for every Premier League match. No budget, no transfers — just pure prediction skill.',
+    url: 'https://goatapp.club'
+  };
+  if (navigator.share) {
+    try { await navigator.share(shareData); } catch(e) {}
+  } else {
+    try {
+      await navigator.clipboard.writeText('Join me on GOAT — pick the best player for every Premier League match!\nhttps://goatapp.club');
+      showToast('Link copied!');
+    } catch(e) {
+      showToast('Share: goatapp.club');
+    }
+  }
 }
 
 // Close menu on outside click
