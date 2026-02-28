@@ -634,14 +634,14 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 
 <!-- TABS -->
 <div class="tabs">
-  <div class="tab active" id="tab-btn-pick" onclick="switchTab('pick')">Pick Team</div>
+  <div class="tab" id="tab-btn-pick" onclick="switchTab('pick')">Pick Team</div>
   <div class="tab" id="tab-btn-myteam" onclick="switchTab('myteam')">My Team</div>
   <div class="tab" id="tab-btn-live" onclick="switchTab('live')">Live</div>
   <div class="tab" id="tab-btn-standings" onclick="switchTab('standings')">Standings</div>
 </div>
 
 <!-- TAB 1: PICK TEAM -->
-<div id="tab-pick" class="tab-content active">
+<div id="tab-pick" class="tab-content">
   <div class="gw-header">
     <div class="gw-title" id="pick-gw-title">Loading...</div>
     <div class="gw-sub" id="pick-gw-sub"></div>
@@ -974,11 +974,18 @@ async function loadGWData(gw) {
   userPicks = {};
   selections = {};
 
-  // Show loading in active tab
-  const activeTab = document.querySelector('.tab-content.active');
+  // Update tab states immediately (gwLoading=true → pick locked)
+  updateTabStates();
+
+  // Show loading in a visible tab
+  var activeTab = document.querySelector('.tab-content.active');
+  if (!activeTab) {
+    // No tab active yet (first load) — activate live tab as loading host
+    document.getElementById('tab-live').classList.add('active');
+    document.getElementById('tab-btn-live').classList.add('active');
+    activeTab = document.getElementById('tab-live');
+  }
   if (activeTab) {
-    const prev = activeTab.innerHTML;
-    activeTab.setAttribute('data-prev', '1');
     activeTab.innerHTML = '<div class="loading-spinner">Loading GW ' + gw + '...</div>';
   }
 
@@ -993,6 +1000,9 @@ async function loadGWData(gw) {
     await Promise.all([loadFixtures(), loadUserPicks()]);
     await loadResults();
 
+    // Data loaded — unlock loading guard before tab state check
+    gwLoading = false;
+
     // Render all tabs
     renderPickTab();
     renderLiveTab();
@@ -1000,8 +1010,9 @@ async function loadGWData(gw) {
     loadStandings(viewGW);
     updateTabStates();
     autoSelectTab();
-  } finally {
+  } catch(e) {
     gwLoading = false;
+    throw e;
   }
 }
 
@@ -1033,6 +1044,8 @@ function updateTabStates() {
 }
 
 function isViewGWPickLocked() {
+  // During data loading, lock pick to prevent confused state
+  if (gwLoading) return true;
   // Past GW: always locked
   if (viewGW < activeGW) return true;
   // Future GW: not locked (browsable, auth required to pick)
