@@ -941,9 +941,13 @@ function startTour() {
 function maybeStartTour() {
   if (!currentUser) return;
   if (localStorage.getItem('goat_tour_done') === 'true') return;
-  // Ensure pick tab is active and fixtures are rendered
-  if (isViewGWPickLocked()) return;
-  switchTab('pick');
+  // Force-show pick tab content for tour (even if GW is locked)
+  document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('tab-pick').classList.add('active');
+  document.getElementById('tab-btn-pick').classList.add('active');
+  var strip = document.getElementById('team-strip');
+  if (strip) strip.style.display = '';
   setTimeout(function() {
     // Verify DOM elements exist before starting
     if (document.querySelector('#pick-matches .match-block') && document.querySelector('#pick-matches .phex-card')) {
