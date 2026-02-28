@@ -718,7 +718,8 @@ let selections = {};    // fixture_id -> {element_id, code, name, img} (unsaved 
 let changingFixtureId = null; // My Team inline change state
 let changeOrigElementId = null; // original pick before change
 let changeTempElementId = null; // currently previewed pick
-let playerStats = {};   // element_id -> {avgRank, formRank, goats}
+let playerStats = {};   // element_id -> {avgRank, formBps, goats}
+let statsMaxRound = 0;  // highest GW round in player_history
 let maxGW = null;       // highest GW with fixtures in DB
 
 // ===== AUTH =====
@@ -1011,37 +1012,49 @@ async function loadUserPicks() {
 }
 
 async function loadPlayerStats() {
-  // Fetch bps_rank for all players to compute Bayesian avg rank, form, GOAT count
+  // Fetch bps_rank + bps for all players to compute Bayesian avg rank, form (L6 GWs), GOAT count
   playerStats = {};
   let offset = 0;
   const allRows = [];
   while (true) {
-    const { data } = await sb.from('player_history').select('element_id,bps_rank,round').order('round', { ascending: true }).range(offset, offset + 999);
+    const { data } = await sb.from('player_history').select('element_id,bps_rank,bps,round,minutes').order('round', { ascending: true }).range(offset, offset + 999);
     if (!data || !data.length) break;
     allRows.push(...data);
     offset += data.length;
     if (data.length < 1000) break;
   }
+  // Find max round in data for form window
+  statsMaxRound = 0;
+  for (const r of allRows) { if (r.round > statsMaxRound) statsMaxRound = r.round; }
+  const formStart = Math.max(1, statsMaxRound - 5); // last 6 GWs
+
   // Bayesian average constants: C=6 prior games, M=15 mean rank
   const C = 6, M = 15;
-  const byPlayer = {};
+  const byPlayer = {};   // eid -> [{round, bps_rank, bps}]
   for (const r of allRows) {
-    if (!r.bps_rank) continue;
     if (!byPlayer[r.element_id]) byPlayer[r.element_id] = [];
-    byPlayer[r.element_id].push(r.bps_rank);
+    byPlayer[r.element_id].push(r);
   }
-  for (const [eid, ranks] of Object.entries(byPlayer)) {
-    const sum = ranks.reduce((s, r) => s + r, 0);
-    const n = ranks.length;
-    // Bayesian avg: pulls low-sample players toward mean
-    const bayesAvg = (C * M + sum) / (C + n);
-    const l6 = ranks.slice(-6);
-    const l6sum = l6.reduce((s, r) => s + r, 0);
-    const bayesForm = (C * M + l6sum) / (C + l6.length);
-    const goats = ranks.filter(r => r === 1).length;
+  for (const [eid, rows] of Object.entries(byPlayer)) {
+    const ranked = rows.filter(r => r.bps_rank);
+    const rankSum = ranked.reduce((s, r) => s + r.bps_rank, 0);
+    const n = ranked.length;
+    const bayesAvg = (C * M + rankSum) / (C + n);
+    const goats = ranked.filter(r => r.bps_rank === 1).length;
+
+    // Form: avg BPS over last 6 GWs (missed GWs = 0 BPS)
+    const byRound = {};
+    for (const r of rows) { byRound[r.round] = r; }
+    let formBpsSum = 0;
+    for (let gw = formStart; gw <= statsMaxRound; gw++) {
+      const r = byRound[gw];
+      if (r && r.minutes > 0) formBpsSum += (r.bps || 0);
+    }
+    const formBps = Math.round(formBpsSum / 6 * 10) / 10;
+
     playerStats[eid] = {
       avgRank: Math.round(bayesAvg * 10) / 10,
-      formRank: Math.round(bayesForm * 10) / 10,
+      formBps: formBps,
       goats, games: n
     };
   }
@@ -1143,9 +1156,9 @@ function renderMatchBlocks() {
       const sc = isSel ? ' selected' : '';
       const ps = playerStats[p.element_id] || {};
       const avgR = ps.avgRank || 99;
-      const formR = ps.formRank || 99;
+      const formB = ps.formBps || 0;
       const goats = ps.goats || 0;
-      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
+      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
@@ -1399,7 +1412,7 @@ function sortMatch(fixtureId, mode, tabEl, useRawId) {
   } else if (mode === 'avgrank') {
     cards.sort((a, b) => parseFloat(a.dataset.avgrank) - parseFloat(b.dataset.avgrank));
   } else if (mode === 'form') {
-    cards.sort((a, b) => parseFloat(a.dataset.form) - parseFloat(b.dataset.form));
+    cards.sort((a, b) => parseFloat(b.dataset.form) - parseFloat(a.dataset.form));
   } else if (mode === 'goats') {
     cards.sort((a, b) => parseInt(b.dataset.goats) - parseInt(a.dataset.goats));
   }
@@ -1554,9 +1567,9 @@ function openChangePanel(fixtureId) {
     const sc = isSel ? ' selected' : '';
     const ps = playerStats[p.element_id] || {};
     const avgR = ps.avgRank || 99;
-    const formR = ps.formRank || 99;
+    const formB = ps.formBps || 0;
     const goats = ps.goats || 0;
-    return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
+    return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
       + '<div class="phex-name-wrap">'
       + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
       + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
@@ -1972,13 +1985,22 @@ function buildProfileStats(history) {
   var ranked = played.filter(h => h.bps_rank);
   var goatCount = ranked.filter(h => h.bps_rank === 1).length;
   var avgRank = ranked.length > 0 ? (ranked.reduce((s, h) => s + h.bps_rank, 0) / ranked.length).toFixed(1) : '-';
-  var last6 = ranked.slice(-6);
-  var formRank = last6.length > 0 ? (last6.reduce((s, h) => s + h.bps_rank, 0) / last6.length).toFixed(1) : '-';
+  // Form: avg BPS over last 6 GWs (missed GWs = 0)
+  var mr = statsMaxRound || Math.max.apply(null, history.map(function(h) { return h.round; }));
+  var formStart = Math.max(1, mr - 5);
+  var byRound = {};
+  history.forEach(function(h) { byRound[h.round] = h; });
+  var formBpsSum = 0;
+  for (var gw = formStart; gw <= mr; gw++) {
+    var h = byRound[gw];
+    if (h && h.minutes > 0) formBpsSum += (h.bps || 0);
+  }
+  var formBps = (formBpsSum / 6).toFixed(1);
   var totalBps = played.reduce((s, h) => s + (h.bps || 0), 0);
   return '<div class="mb-profile-stats">'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + goatCount + ' \uD83D\uDC51</div><div class="mb-stat-label">GOATs</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + avgRank + '</div><div class="mb-stat-label">Avg Rank</div></div>'
-    + '<div class="mb-stat-block"><div class="mb-stat-val">' + formRank + '</div><div class="mb-stat-label">Form (L6)</div></div>'
+    + '<div class="mb-stat-block"><div class="mb-stat-val">' + formBps + '</div><div class="mb-stat-label">Form (L6)</div></div>'
     + '<div class="mb-stat-block"><div class="mb-stat-val">' + totalBps + '</div><div class="mb-stat-label">BPS Total</div></div>'
     + '</div>';
 }
@@ -1998,8 +2020,8 @@ function buildProfileHistory(history) {
   // Build lookup by round
   var byRound = {};
   history.forEach(function(h) { byRound[h.round] = h; });
-  // Find max round played this season
-  var maxRound = Math.max.apply(null, history.map(function(h) { return h.round; }));
+  // Use global max round so all GWs are shown even if player missed recent ones
+  var maxRound = statsMaxRound || Math.max.apply(null, history.map(function(h) { return h.round; }));
   var rows = '';
   // Show all GWs from most recent to GW1
   for (var gw = maxRound; gw >= 1; gw--) {
