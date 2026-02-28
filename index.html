@@ -1831,14 +1831,14 @@ async function loadStandings(gw) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'r' + i + '\')">' + esc(s.name) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'rme\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
