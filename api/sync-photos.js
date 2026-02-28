@@ -19,10 +19,13 @@ module.exports = async function handler(req, res) {
 
   try {
     // 1. Get all player codes from DB
-    const playersRes = await fetch(`${SUPABASE_URL}/rest/v1/players?select=element_id,fpl_code,short_name&order=element_id`, {
+    const playersRes = await fetch(`${SUPABASE_URL}/rest/v1/players?select=element_id,code,short_name&limit=1000&order=element_id`, {
       headers: sbHeaders
     });
     const players = await playersRes.json();
+    if (!Array.isArray(players)) {
+      return res.status(500).json({ error: 'Failed to fetch players', detail: players });
+    }
 
     // 2. List existing photos in Storage
     const existingRes = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
@@ -34,7 +37,7 @@ module.exports = async function handler(req, res) {
     const existingSet = new Set((existing || []).map(f => f.name));
 
     // 3. Find players missing photos
-    const missing = players.filter(p => p.fpl_code && !existingSet.has(`${p.fpl_code}.png`));
+    const missing = players.filter(p => p.code && !existingSet.has(`${p.code}.png`));
 
     if (missing.length === 0) {
       return res.status(200).json({ message: 'All photos synced', total: players.length, existing: existingSet.size });
@@ -49,7 +52,7 @@ module.exports = async function handler(req, res) {
 
     for (const p of batch) {
       try {
-        const photoRes = await fetch(`${FPL_CDN}${p.fpl_code}.png`, {
+        const photoRes = await fetch(`${FPL_CDN}${p.code}.png`, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
         });
         if (!photoRes.ok) { skipped++; continue; }
@@ -57,7 +60,7 @@ module.exports = async function handler(req, res) {
         const buffer = await photoRes.arrayBuffer();
         if (buffer.byteLength < 500) { skipped++; continue; } // placeholder image
 
-        const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p.fpl_code}.png`, {
+        const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p.code}.png`, {
           method: 'POST',
           headers: {
             ...sbHeaders,
@@ -71,7 +74,7 @@ module.exports = async function handler(req, res) {
           uploaded++;
         } else {
           failed++;
-          errors.push(`${p.short_name} (${p.fpl_code}): ${uploadRes.status}`);
+          errors.push(`${p.short_name} (${p.code}): ${uploadRes.status}`);
         }
       } catch (e) {
         failed++;
