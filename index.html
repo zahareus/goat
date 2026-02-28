@@ -344,30 +344,33 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 .mt2-scroll-wrap::-webkit-scrollbar{display:none}
 .mt2-strip{display:flex;gap:10px;min-width:max-content}
 .mt2-card{
-  width:120px;background:#1e1e1e;border:2px solid #BFB294;
+  width:148px;background:#1e1e1e;border:2px solid #BFB294;
   display:flex;flex-direction:column;align-items:center;
-  padding:8px 6px 10px;gap:4px;position:relative;transition:transform .15s;
+  padding:0 0 10px;gap:0;position:relative;transition:transform .15s;
 }
 .mt2-card:hover{transform:translateY(-4px)}
 .mt2-card:hover .mt2-hex-outer{background:#d4c5a0}
 .mt2-card.motm{background:#BFB294;border-color:#8a7050}
 .mt2-card.motm:hover .mt2-hex-outer{background:#6a5030}
-.mt2-match{font-size:9px;font-weight:700;color:#aaa;letter-spacing:0.3px;text-align:center}
-.mt2-card.motm .mt2-match{color:#3a2810}
-.mt2-status{font-size:9px;font-weight:700;color:#666;letter-spacing:0.5px}
+.mt2-header{width:100%;background:#151515;padding:8px 6px 7px;text-align:center;border-bottom:1px solid #2a2a2a}
+.mt2-card.motm .mt2-header{background:#a89570;border-bottom-color:#8a7050}
+.mt2-match{font-size:13px;font-weight:900;color:#fff;letter-spacing:1px;text-align:center}
+.mt2-card.motm .mt2-match{color:#1a1a1a}
+.mt2-status{font-size:11px;font-weight:700;color:#BFB294;letter-spacing:0.5px;margin-top:3px}
 .mt2-status.live{color:#ff4444}
-.mt2-card.motm .mt2-status{color:#6a5030}
+.mt2-status.ft{color:#666}
+.mt2-card.motm .mt2-status{color:#3a2810}
 .mt2-card.motm .mt2-status.live{color:#cc2222}
-.mt2-hex-wrap{position:relative;width:76px;height:87px;margin:2px 0}
+.mt2-hex-wrap{position:relative;width:82px;height:94px;margin:8px 0 2px}
 .mt2-hex-outer{
-  width:76px;height:87px;
+  width:82px;height:94px;
   clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
   background:#BFB294;display:flex;align-items:center;justify-content:center;
   transition:background .15s;
 }
 .mt2-card.motm .mt2-hex-outer{background:#7a6040}
 .mt2-hex-inner{
-  width:69px;height:79px;
+  width:74px;height:86px;
   clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
   background:#1e1e1e;overflow:hidden;
 }
@@ -381,7 +384,7 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
   font-size:10px;font-weight:900;color:#111;
 }
 .mt2-card.motm .mt2-rank-badge{background:#111;color:#fff}
-.mt2-name{font-size:10px;font-weight:700;color:#ddd;text-align:center;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;margin-top:5px}
+.mt2-name{font-size:11px;font-weight:700;color:#ddd;text-align:center;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;margin-top:5px}
 .mt2-card.motm .mt2-name{color:#111}
 .mt2-pos{font-size:8px;color:#777;text-transform:uppercase;letter-spacing:0.5px}
 .mt2-card.motm .mt2-pos{color:#4a3820}
@@ -1485,13 +1488,17 @@ function renderMyTeam() {
     }
 
     const cardClass = isGoat ? ' motm' : '';
-    const statusClass = isLive ? ' live' : '';
+    let statusClass = '';
     let statusText = '';
-    if (isFt) statusText = 'FT';
-    else if (isLive) statusText = f.minutes + "'";
-    else {
+    if (isFt) {
+      statusClass = ' ft';
+      statusText = 'FT ' + f.home_score + '-' + f.away_score;
+    } else if (isLive) {
+      statusClass = ' live';
+      statusText = f.minutes + "' " + f.home_score + '-' + f.away_score;
+    } else {
       const ko = new Date(f.kickoff_time);
-      statusText = ko.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      statusText = ko.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) + ' · ' + ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
     }
 
     const bpsClass = (!isLive && !isFt) ? ' pending' : '';
@@ -1502,8 +1509,10 @@ function renderMyTeam() {
       : '';
 
     html += '<div class="mt2-card' + cardClass + '">'
-      + '<div class="mt2-match">' + f.home_short + ' - ' + f.away_short + '</div>'
+      + '<div class="mt2-header">'
+      + '<div class="mt2-match">' + f.home_short + ' v ' + f.away_short + '</div>'
       + '<div class="mt2-status' + statusClass + '">' + statusText + '</div>'
+      + '</div>'
       + '<div class="mt2-hex-wrap">'
       + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.style.display=\'none\'" alt=""></div></div>'
       + '<div class="mt2-rank-badge">' + rank + '</div>'
