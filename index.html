@@ -72,6 +72,12 @@ body{
 .gw-nav-arrow:disabled{color:#333;cursor:not-allowed}
 .gw-nav-label{font-size:14px;font-weight:900;color:#fff;letter-spacing:2px;text-transform:uppercase;min-width:60px;text-align:center}
 .nav-right{display:flex;align-items:center;gap:12px;position:relative}
+.nav-help-btn{
+  width:28px;height:28px;border-radius:50%;background:none;border:1px solid #555;
+  color:#999;font-size:14px;font-weight:700;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;padding:0;transition:all .15s;
+}
+.nav-help-btn:hover{border-color:#BFB294;color:#BFB294}
 .nav-menu-btn{
   display:flex;align-items:center;gap:6px;cursor:pointer;color:#aaa;
   font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
@@ -635,6 +641,7 @@ tr.lb-picks-row td{padding:6px 12px 8px}
     <button class="gw-nav-arrow" id="gw-next" onclick="changeViewGW(1)">&rarr;</button>
   </div>
   <div class="nav-right">
+    <button class="nav-help-btn" onclick="replayTour()" title="How to Play">?</button>
     <button class="nav-menu-btn" onclick="toggleMenu()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="#aaa"><circle cx="8" cy="8" r="7" stroke="#aaa" stroke-width="1" fill="none"/><circle cx="8" cy="6" r="2.5" fill="#aaa"/><path d="M3 13c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5" stroke="#aaa" stroke-width="1" fill="none"/></svg>
       Menu
@@ -943,9 +950,13 @@ function startTour() {
   driverObj.drive();
 }
 
+function replayTour() {
+  localStorage.removeItem('goat_tour_done');
+  maybeStartTour();
+}
+
 function maybeStartTour() {
   var forcetour = window.location.search.includes('tour');
-  if (!forcetour && !currentUser) return;
   if (!forcetour && localStorage.getItem('goat_tour_done') === 'true') return;
 
   // If current GW is locked, load next GW for the tour
