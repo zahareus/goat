@@ -120,9 +120,9 @@ CREATE POLICY "Public read results"   ON results   FOR SELECT USING (TRUE);
 CREATE POLICY "Public read gw_config" ON gw_config FOR SELECT USING (TRUE);
 CREATE POLICY "Public read profiles"  ON profiles  FOR SELECT USING (TRUE);
 
--- Picks: own rows only
-CREATE POLICY "Users read own picks"    ON picks FOR SELECT
-  USING (auth.uid() = user_id);
+-- Picks: any authenticated user can read all picks (needed for standings)
+CREATE POLICY "Authenticated read all picks" ON picks FOR SELECT
+  USING (auth.role() = 'authenticated');
 CREATE POLICY "Users insert own picks"  ON picks FOR INSERT
   WITH CHECK (auth.uid() = user_id AND locked = FALSE);
 CREATE POLICY "Users update own picks"  ON picks FOR UPDATE

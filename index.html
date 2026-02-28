@@ -662,6 +662,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const CDN = 'https://zanssnurnzdqwaxuadge.supabase.co/storage/v1/object/public/player-photos/';
+const SEASON = '25-26';
 const PO = {GKP:1, DEF:2, MID:3, FWD:4};
 const POS_COLORS = {GKP:'#f5c518', DEF:'#00d5e0', MID:'#a0e000', FWD:'#ff6b35'};
 const FPL_TEAM_MAP = {"1":"ARS","2":"AVL","3":"BUR","4":"BOU","5":"BRE","6":"BHA","7":"CHE","8":"CRY","9":"EVE","10":"FUL","11":"LEE","12":"LIV","13":"MCI","14":"MUN","15":"NEW","16":"NFO","17":"SUN","18":"TOT","19":"WHU","20":"WOL"};
@@ -759,6 +760,12 @@ async function loadAppData() {
   await Promise.all([loadPlayers(), loadPlayerStats()]);
   loadProfileData();
 
+  // Check URL hash for initial GW
+  const hashGW = parseGWFromHash();
+  if (hashGW && hashGW >= FIRST_GW && hashGW <= activeGW + 1) {
+    viewGW = hashGW;
+  }
+
   // Load GW-specific data
   await loadGWData(viewGW);
 }
@@ -774,6 +781,19 @@ function updateGWNav() {
   document.getElementById('gw-nav-label').textContent = 'GW ' + viewGW;
   document.getElementById('gw-prev').disabled = (viewGW <= FIRST_GW);
   document.getElementById('gw-next').disabled = (viewGW >= activeGW + 1);
+  // Update URL hash
+  const newHash = '#gw' + viewGW + '_' + SEASON;
+  if (window.location.hash !== newHash) {
+    window.location.hash = newHash;
+  }
+}
+
+function parseGWFromHash() {
+  const hash = window.location.hash;
+  if (!hash) return null;
+  const m = hash.match(/^#gw(\d+)/i);
+  if (m) return parseInt(m[1]);
+  return null;
 }
 
 async function loadGWData(gw) {
@@ -833,11 +853,13 @@ function updateTabStates() {
 function isViewGWPickLocked() {
   // Past GW: always locked
   if (viewGW < activeGW) return true;
-  // Future GW: not locked (viewable)
+  // Future GW: not locked (viewable, but cards locked individually)
   if (viewGW > activeGW) return false;
-  // Active GW: locked if ALL fixtures started
+  // Active GW: locked if submitted AND any match started/finished
   if (!fixtures.length) return false;
-  return fixtures.every(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
+  const submitted = Object.keys(userPicks).length > 0;
+  const anyStarted = fixtures.some(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
+  return submitted && anyStarted;
 }
 
 function autoSelectTab() {
@@ -1281,7 +1303,11 @@ async function renderLiveTab() {
   const nav = document.getElementById('live-nav');
   const content = document.getElementById('live-match-content');
 
-  if (!fixtures.length) return;
+  if (!fixtures.length) {
+    nav.innerHTML = '';
+    content.innerHTML = '<div class="empty-state"><span class="emoji">&#x26BD;</span><h3>No fixtures for GW' + viewGW + '</h3><p>Fixtures will appear when the gameweek is set up</p></div>';
+    return;
+  }
 
   // Build nav buttons
   let navHtml = '';
@@ -1816,6 +1842,15 @@ function esc(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ===== HASH ROUTING (browser back/forward) =====
+window.addEventListener('hashchange', function() {
+  if (!activeGW) return;
+  const hashGW = parseGWFromHash();
+  if (hashGW && hashGW >= FIRST_GW && hashGW <= activeGW + 1 && hashGW !== viewGW) {
+    loadGWData(hashGW);
+  }
+});
 
 // ===== AUTO-REFRESH (every 60s when on Live tab, only for active GW) =====
 setInterval(function() {
