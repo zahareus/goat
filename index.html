@@ -8,6 +8,8 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://zanssnurnzdqwaxuadge.supabase.co" crossorigin>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{
@@ -584,6 +586,16 @@ tr.lb-picks-row td{padding:6px 12px 8px}
   .mb-profile-name{font-size:16px}
   .page-body{padding:20px 16px}
 }
+
+/* ===== DRIVER.JS TOUR OVERRIDES ===== */
+.driver-popover{background:#1a1a1a !important;border:1px solid #BFB294 !important;color:#ccc !important}
+.driver-popover-title{color:#BFB294 !important;font-size:14px !important;font-weight:900 !important;letter-spacing:1px !important}
+.driver-popover-description{color:#bbb !important;font-size:13px !important;line-height:1.6 !important}
+.driver-popover .driver-popover-progress-text{color:#777 !important}
+.driver-popover-prev-btn{background:transparent !important;color:#888 !important;border:1px solid #333 !important}
+.driver-popover-next-btn,.driver-popover-close-btn-text{background:#BFB294 !important;color:#111 !important;font-weight:700 !important}
+.driver-popover-next-btn:hover,.driver-popover-close-btn-text:hover{background:#d4c9a8 !important}
+.driver-overlay{background:rgba(0,0,0,0.75) !important}
 </style>
 </head>
 <body>
@@ -828,6 +840,118 @@ let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 let standingsMode = 'gw'; // 'gw' or 'season'
 
+// ===== ONBOARDING TOUR =====
+function startTour() {
+  var driverObj = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    allowClose: true,
+    overlayColor: 'rgba(0,0,0,0.75)',
+    onDestroyStarted: function() {
+      localStorage.setItem('goat_tour_done', 'true');
+      // Switch back to pick tab if we ended up elsewhere
+      var pickTab = document.getElementById('tab-pick');
+      if (pickTab && !pickTab.classList.contains('active') && !isViewGWPickLocked()) {
+        switchTab('pick');
+      }
+      driverObj.destroy();
+    },
+    steps: [
+      {
+        element: '#pick-gw-title',
+        popover: {
+          title: 'Welcome to GOAT!',
+          description: 'Each gameweek, pick the best player from every match. Let\'s walk through it.',
+          side: 'bottom',
+          align: 'center'
+        }
+      },
+      {
+        element: '#pick-matches .match-block',
+        popover: {
+          title: 'Match Block',
+          description: 'Here\'s a match. Scroll through the players and pick who you think will be the GOAT.',
+          side: 'bottom',
+          align: 'center'
+        }
+      },
+      {
+        element: '#pick-matches .match-block .phex-card',
+        popover: {
+          title: 'Player Card',
+          description: 'Tap a player to select them. Gold border = your pick. Stats shown below: Avg BPS Rank, Form, GOAT count.',
+          side: 'bottom',
+          align: 'center',
+          onNextClick: function() {
+            // Require user to click a player card to proceed
+            function onCardClick() {
+              document.removeEventListener('click', handler);
+              driverObj.moveNext();
+            }
+            function handler(e) {
+              if (e.target.closest('.phex-card')) onCardClick();
+            }
+            document.addEventListener('click', handler);
+          }
+        }
+      },
+      {
+        element: '#team-strip',
+        popover: {
+          title: 'Team Strip',
+          description: 'Your picks collect here. When you\'ve picked for all matches, hit Submit.',
+          side: 'top',
+          align: 'center'
+        }
+      },
+      {
+        element: '#tab-btn-live',
+        popover: {
+          title: 'Live Tab',
+          description: 'During matches, switch to Live to watch BPS scores update in real-time.',
+          side: 'bottom',
+          align: 'center',
+          onNextClick: function() {
+            // Require user to click the Live tab to proceed
+            var liveBtn = document.getElementById('tab-btn-live');
+            function onClick() {
+              liveBtn.removeEventListener('click', onClick);
+              switchTab('live');
+              setTimeout(function() { driverObj.moveNext(); }, 300);
+            }
+            liveBtn.addEventListener('click', onClick);
+          }
+        }
+      },
+      {
+        element: '#tab-btn-standings',
+        popover: {
+          title: 'Standings',
+          description: 'Check Standings to see how you rank. Most GOATs wins, BPS breaks ties. Good luck!',
+          side: 'bottom',
+          align: 'center'
+        }
+      }
+    ]
+  });
+
+  driverObj.drive();
+}
+
+function maybeStartTour() {
+  if (!currentUser) return;
+  if (localStorage.getItem('goat_tour_done') === 'true') return;
+  // Ensure pick tab is active and fixtures are rendered
+  if (isViewGWPickLocked()) return;
+  switchTab('pick');
+  setTimeout(function() {
+    // Verify DOM elements exist before starting
+    if (document.querySelector('#pick-matches .match-block') && document.querySelector('#pick-matches .phex-card')) {
+      startTour();
+    }
+  }, 500);
+}
+
 // ===== AUTH =====
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
@@ -841,7 +965,7 @@ async function initAuth() {
       currentUser = session.user;
       closeAuthModal();
       // Reload with user context
-      loadAppData();
+      loadAppData().then(function() { maybeStartTour(); });
     }
     if (event === 'SIGNED_OUT') {
       currentUser = null;
@@ -851,7 +975,7 @@ async function initAuth() {
   });
 
   // Always load the app (guest or authenticated)
-  loadAppData();
+  loadAppData().then(function() { maybeStartTour(); });
 }
 
 async function handleAuth() {
