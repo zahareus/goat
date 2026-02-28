@@ -868,8 +868,13 @@ function startTour() {
     onDestroyStarted: function() {
       localStorage.setItem('goat_tour_done', 'true');
       driverObj.destroy();
-      // Restore proper tab after tour
-      autoSelectTab();
+      // Clean reload: remove ?tour from URL and refresh
+      var cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      if (cleanUrl !== window.location.href) {
+        window.location.href = cleanUrl;
+      } else {
+        window.location.reload();
+      }
     },
     steps: [
       {
