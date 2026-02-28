@@ -404,37 +404,30 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 .lb-your-rank{font-size:32px;font-weight:900;color:#BFB294}
 .lb-your-info{font-size:12px;color:#aaa}
 .lb-your-info span{color:#fff;font-weight:700}
-.lb-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
-.lb-table colgroup col:nth-child(1){width:36px}
-.lb-table colgroup col:nth-child(2){width:90px}
-.lb-table colgroup col:nth-child(3){width:90px}
-.lb-table colgroup col:nth-child(5){width:50px}
-.lb-table colgroup col:nth-child(6){width:50px}
+.lb-table{width:100%;border-collapse:collapse;font-size:12px}
 .lb-table th{
-  text-align:left;padding:8px 10px;background:#1a1a1a;
+  text-align:left;padding:8px 12px;background:#1a1a1a;
   color:#777;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;
   border-bottom:1px solid #2a2a2a;
 }
-.lb-table td{padding:8px 10px;border-bottom:1px solid #1e1e1e;vertical-align:middle}
-.lb-rank{font-weight:900;color:#BFB294}
+.lb-table td{padding:10px 12px;border-bottom:1px solid #1e1e1e;vertical-align:middle}
+.lb-rank{font-weight:900;color:#BFB294;width:36px}
 .lb-rank.top3{color:#ffd700}
 .lb-name{font-weight:700;color:#ddd;font-size:14px}
 .lb-name.me{color:#BFB294}
 .lb-name-btn{cursor:pointer}
 .lb-name-btn:hover{color:#BFB294;text-decoration:underline;text-decoration-color:#BFB29466}
-.lb-motms{color:#BFB294;font-weight:700;text-align:center}
-.lb-pts{color:#fff;font-weight:700;text-align:right}
+.lb-motms{color:#BFB294;font-weight:700;text-align:center;width:56px}
+.lb-pts{color:#fff;font-weight:700;text-align:right;width:56px}
 tr.my-row{background:#1a1a12}
-tr.separator td{padding:4px 10px;color:#555;font-size:10px;text-align:center;background:#111}
-tr.lb-pick-tr{background:#111}
-tr.lb-pick-tr td{padding:4px 10px;border-bottom:1px solid #1a1a1a;font-size:11px;vertical-align:middle}
-.lbp-match{color:#666;font-weight:700;white-space:nowrap}
-.lbp-st{color:#777;white-space:nowrap}
-.lbp-st.live{color:#ff4444;font-weight:700}
-.lbp-st.ft{color:#555}
+tr.separator td{padding:4px 12px;color:#555;font-size:10px;text-align:center;background:#111}
+tr.lb-picks-row{background:#111}
+tr.lb-picks-row td{padding:6px 12px 8px}
+.lbp-grid{display:grid;grid-template-columns:100px 1fr 36px 40px;column-gap:10px;font-size:11px;line-height:1.6}
+.lbp-grid>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lbp-match{color:#666;font-weight:700}
 .lbp-player{color:#ccc;font-weight:700}
 .lbp-player.hidden{color:#444;font-weight:400;font-style:italic}
-.lbp-goat{color:#ffd700;font-size:10px;margin-left:3px}
 .lbp-rank{color:#BFB294;font-weight:900;text-align:center}
 .lbp-bps{color:#888;font-weight:700;text-align:right}
 
@@ -1823,8 +1816,7 @@ async function loadStandings(gw) {
     html += '</div><div class="lb-your-info">' + esc(myEntry.name) + '<br><span>' + myEntry.goats + ' GOATs</span> \u00B7 <span>' + myEntry.bps.toLocaleString() + ' BPS</span></div></div>';
   }
 
-  html += '<table class="lb-table"><colgroup><col><col><col><col><col><col></colgroup>';
-  html += '<thead><tr><th>#</th><th colspan="3">Player</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th></tr></thead><tbody>';
+  html += '<table class="lb-table"><thead><tr><th>#</th><th>Player</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th></tr></thead><tbody>';
 
   // Show top 20 + separator + my row
   const showCount = Math.min(20, sorted.length);
@@ -1835,14 +1827,14 @@ async function loadStandings(gw) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td colspan="3" class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
-    html += '<tr class="separator"><td colspan="6">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td colspan="3" class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
@@ -1851,7 +1843,6 @@ async function loadStandings(gw) {
 }
 
 function buildPicksRow(rowId, picks, gwFixtures) {
-  // Sort picks by fixture kickoff time
   const sortedPicks = [...picks].sort((a, b) => {
     const fa = gwFixtures.find(x => x.id === a.fixture_id);
     const fb = gwFixtures.find(x => x.id === b.fixture_id);
@@ -1859,7 +1850,7 @@ function buildPicksRow(rowId, picks, gwFixtures) {
     return new Date(fa.kickoff_time) - new Date(fb.kickoff_time);
   });
 
-  let rows = '';
+  let cells = '';
   for (const p of sortedPicks) {
     const f = gwFixtures.find(x => x.id === p.fixture_id);
     const pl = players[p.element_id];
@@ -1868,44 +1859,24 @@ function buildPicksRow(rowId, picks, gwFixtures) {
     const matchLabel = f.home_short + ' \u2013 ' + f.away_short;
     const started = f.status === 'ft' || f.status === 'live';
 
-    // Status: FT, minutes, or DD.MM HH:MM
-    let stText = '', stCls = '';
-    if (f.status === 'ft') {
-      stText = 'FT'; stCls = ' ft';
-    } else if (f.status === 'live') {
-      stText = f.minutes + "'"; stCls = ' live';
-    } else {
-      const ko = new Date(f.kickoff_time);
-      const dd = String(ko.getDate()).padStart(2, '0');
-      const mm = String(ko.getMonth() + 1).padStart(2, '0');
-      const hh = String(ko.getHours()).padStart(2, '0');
-      const mi = String(ko.getMinutes()).padStart(2, '0');
-      stText = dd + '.' + mm + ' ' + hh + ':' + mi;
-    }
-
-    // Hide player info for unstarted matches (anti-spoiler)
-    let playerHtml, rankText, bpsText;
+    let playerText, rankText, bpsText;
     if (started) {
-      const goat = p.isGoat ? '<span class="lbp-goat">\uD83D\uDC51</span>' : '';
-      playerHtml = esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')' + goat;
+      playerText = esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')' + (p.isGoat ? ' \uD83D\uDC51' : '');
       rankText = p.rank > 0 ? '#' + p.rank : '\u2013';
-      bpsText = p.bps > 0 ? p.bps : '';
+      bpsText = p.bps > 0 ? '' + p.bps : '';
     } else {
-      playerHtml = '\u2014';
+      playerText = '\u2014';
       rankText = '';
       bpsText = '';
     }
 
-    rows += '<tr class="lb-pick-tr picks-g' + rowId + '" style="display:none">'
-      + '<td class="lbp-match">' + matchLabel + '</td>'
-      + '<td class="lbp-st' + stCls + '">' + stText + '</td>'
-      + '<td class="lbp-player' + (started ? '' : ' hidden') + '">' + playerHtml + '</td>'
-      + '<td class="lbp-rank">' + rankText + '</td>'
-      + '<td class="lbp-bps">' + bpsText + '</td>'
-      + '<td></td>'
-      + '</tr>';
+    cells += '<span class="lbp-match">' + matchLabel + '</span>'
+      + '<span class="lbp-player' + (started ? '' : ' hidden') + '">' + playerText + '</span>'
+      + '<span class="lbp-rank">' + rankText + '</span>'
+      + '<span class="lbp-bps">' + bpsText + '</span>';
   }
-  return rows;
+
+  return '<tr class="lb-picks-row" id="picks-' + rowId + '" style="display:none"><td colspan="4"><div class="lbp-grid">' + cells + '</div></td></tr>';
 }
 
 // ===== PROFILE =====
@@ -2093,12 +2064,11 @@ function switchTab(name) {
 }
 
 function togglePicks(rowId) {
-  const group = document.querySelectorAll('.picks-g' + rowId);
-  if (!group.length) return;
-  const isOpen = group[0].style.display !== 'none';
-  // Close all open picks first
-  document.querySelectorAll('.lb-pick-tr').forEach(r => { r.style.display = 'none'; });
-  if (!isOpen) group.forEach(r => { r.style.display = ''; });
+  var row = document.getElementById('picks-' + rowId);
+  if (!row) return;
+  var isOpen = row.style.display !== 'none';
+  document.querySelectorAll('.lb-picks-row').forEach(r => { r.style.display = 'none'; });
+  if (!isOpen) row.style.display = '';
 }
 
 function toggleMenu() {
