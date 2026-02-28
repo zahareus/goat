@@ -30,6 +30,8 @@ module.exports = async function handler(req, res) {
       await handleStatus(chatId);
     } else if (text === '/unlink') {
       await handleUnlink(chatId);
+    } else if (text === '/gw' || text.startsWith('/gw ')) {
+      await handleGW(chatId, text);
     } else if (text === '/help') {
       await handleHelp(chatId);
     } else if (text.includes('@')) {
@@ -41,7 +43,7 @@ module.exports = async function handler(req, res) {
     }
   } catch (err) {
     console.error('Telegram webhook error:', err);
-    await send(chatId, '⚠️ Something went wrong. Try again later.');
+    try { await send(chatId, '⚠️ Error: ' + (err.message || String(err))); } catch(_) {}
   }
 
   return res.status(200).json({ ok: true });
@@ -89,17 +91,15 @@ async function handleStart(chatId) {
   const rows = await sbSelect('profiles', `telegram_chat_id=eq.${chatId}&select=id,team_name`);
   if (rows.length > 0) {
     await send(chatId,
-      `✅ You're already linked as *${esc(rows[0].team_name || 'Unknown')}*.\n\nUse /status to check or /unlink to disconnect.`,
-      'Markdown'
+      `✅ You're already linked as "${rows[0].team_name || 'Unknown'}".\n\nUse /status to check or /unlink to disconnect.`
     );
     return;
   }
 
   await send(chatId,
-    '⚽ *Welcome to GOAT Fantasy Bot\\!*\n\n'
-    + 'Get alerts about deadlines, lineups, and results\\.\n\n'
-    + '📧 Enter your GOAT email to link your account:',
-    'MarkdownV2'
+    '⚽ Welcome to GOAT Fantasy Bot!\n\n'
+    + 'Get alerts about deadlines, lineups, and results.\n\n'
+    + '📧 Enter your GOAT email to link your account:'
   );
 }
 
@@ -241,11 +241,220 @@ async function handleUnlink(chatId) {
   await send(chatId, '🔓 Telegram unlinked. You won\'t receive notifications anymore.\n\nSend your email to link again.');
 }
 
+async function handleGW(chatId, text) {
+  const users = await sbSelect('profiles', `telegram_chat_id=eq.${chatId}&select=id,team_name`);
+  if (users.length === 0) {
+    await send(chatId, '❌ Not linked. Use /start first.');
+    return;
+  }
+  const userId = users[0].id;
+  const teamName = users[0].team_name || '—';
+
+  let gw;
+  const gwMatch = text.match(/\/gw\s+(\d+)/);
+  if (gwMatch) {
+    gw = parseInt(gwMatch[1]);
+  } else {
+    const active = await sbSelect('gw_config', 'is_active=eq.true&select=gw&limit=1');
+    if (active.length === 0) { await send(chatId, '❌ No active gameweek.'); return; }
+    gw = active[0].gw;
+  }
+
+  const [fixtures, myPicks, allPicks] = await Promise.all([
+    sbSelect('fixtures', `gw=eq.${gw}&select=id,home_team_id,away_team_id,home_short,away_short,status,kickoff_time,home_score,away_score,minutes&order=kickoff_time`),
+    sbSelect('picks', `user_id=eq.${userId}&gw=eq.${gw}&select=fixture_id,element_id`),
+    sbSelect('picks', `gw=eq.${gw}&select=user_id,fixture_id,element_id`),
+  ]);
+
+  if (fixtures.length === 0) { await send(chatId, `❌ No fixtures for GW${gw}.`); return; }
+
+  const allElementIds = [...new Set(allPicks.map(p => p.element_id))];
+  const fixtureIds = fixtures.map(f => f.id);
+
+  const [players, results] = await Promise.all([
+    allElementIds.length > 0
+      ? sbSelect('players', `element_id=in.(${allElementIds.join(',')})&select=element_id,short_name,team_short`)
+      : [],
+    sbSelect('results', `fixture_id=in.(${fixtureIds.join(',')})&select=fixture_id,element_id,bps,is_goat`),
+  ]);
+
+  // Fetch FPL availability for scheduled match picks
+  const scheduled = fixtures.filter(f => f.status === 'scheduled');
+  const myScheduledEids = scheduled.map(f => myPickMap[f.id]).filter(Boolean);
+  // Also try lineups from RotoWire
+  let lineupsData = {};
+  let fplAvail = {}; // element_id -> chance_of_playing (null=available, 100=available, 75=doubt, 0/25=out)
+  if (scheduled.length > 0) {
+    const myEidsForScheduled = new Set();
+    for (const p of myPicks) {
+      if (scheduled.some(f => f.id === p.fixture_id)) myEidsForScheduled.add(p.element_id);
+    }
+    try {
+      const [fplResp, linResp] = await Promise.all([
+        fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
+        }),
+        fetch('https://goatapp.club/api/lineups').catch(() => null),
+      ]);
+      if (fplResp.ok) {
+        const boot = await fplResp.json();
+        for (const el of boot.elements) {
+          if (myEidsForScheduled.has(el.id)) {
+            fplAvail[el.id] = el.chance_of_playing_next_round;
+          }
+        }
+      }
+      if (linResp && linResp.ok) {
+        const ld = await linResp.json();
+        if (!ld.error) lineupsData = ld;
+      }
+    } catch (_) {}
+  }
+
+  const playerMap = {};
+  for (const p of players) playerMap[p.element_id] = p;
+
+  const resultMap = {};
+  for (const r of results) {
+    if (!resultMap[r.fixture_id]) resultMap[r.fixture_id] = {};
+    resultMap[r.fixture_id][r.element_id] = r;
+  }
+
+  const myPickMap = {};
+  for (const p of myPicks) myPickMap[p.fixture_id] = p.element_id;
+
+  // Split fixtures into groups
+  const finished = fixtures.filter(f => f.status === 'ft');
+  const live = fixtures.filter(f => f.status === 'live');
+  const upcoming = fixtures.filter(f => f.status === 'scheduled');
+
+  let totalBps = 0;
+  let goats = 0;
+  const parts = [];
+
+  // Helper: build match block
+  function matchBlock(f, icon) {
+    const score = (f.status === 'ft' || f.status === 'live')
+      ? `  ${f.home_score}:${f.away_score}` : '';
+    const minTag = f.status === 'live' && f.minutes ? ` [${f.minutes}']` : '';
+    const header = `${icon} <b>${f.home_short} – ${f.away_short}</b>${score}${minTag}`;
+
+    const eid = myPickMap[f.id];
+    if (!eid) return header + '\n    <i>no pick</i>';
+
+    const pl = playerMap[eid];
+    const name = pl ? pl.short_name : `#${eid}`;
+    const team = pl ? pl.team_short : '';
+
+    const res = resultMap[f.id]?.[eid];
+    if (res) {
+      const crown = res.is_goat ? ' 👑' : '';
+      if (res.is_goat) goats++;
+      totalBps += res.bps;
+      const fResults = Object.values(resultMap[f.id] || {});
+      fResults.sort((a, b) => b.bps - a.bps);
+      const rank = fResults.findIndex(r => r.element_id === eid) + 1;
+      return header + `\n    ${h(name)} (${team})${crown}  #${rank}  <b>${res.bps}</b> BPS`;
+    }
+
+    // Scheduled — show availability status
+    if (f.status === 'scheduled') {
+      let statusTag = '';
+      // 1) Try RotoWire lineups first (more specific)
+      const key = `${f.home_team_id}-${f.away_team_id}`;
+      const lineup = lineupsData[key];
+      if (lineup) {
+        const allPlayers = [...(lineup.home || []), ...(lineup.away || [])];
+        const found = allPlayers.find(lp => lp.fpl_id === eid);
+        if (found) {
+          const st = found.status;
+          if (st === 'starter') statusTag = ' ✅';
+          else if (st === 'starter_ques') statusTag = ' ⚠️';
+          else if (st === 'ques') statusTag = ' 🟡';
+          else if (st === 'out' || st === 'sus') statusTag = ' 🔴';
+        }
+      }
+      // 2) Fallback to FPL chance_of_playing
+      if (!statusTag && eid in fplAvail) {
+        const chance = fplAvail[eid];
+        if (chance === null || chance === 100) statusTag = ' ✅';
+        else if (chance === 75) statusTag = ' ⚠️';
+        else if (chance === 50) statusTag = ' 🟡';
+        else statusTag = ' 🔴';
+      }
+      const ko = fmtTime(f.kickoff_time);
+      return header + `  <i>${ko}</i>\n    ${h(name)} (${team})${statusTag}`;
+    }
+
+    return header + `\n    ${h(name)} (${team})`;
+  }
+
+  // Finished matches
+  if (finished.length > 0) {
+    parts.push(finished.map(f => matchBlock(f, '🏁')).join('\n\n'));
+  }
+
+  // Live matches
+  if (live.length > 0) {
+    parts.push(live.map(f => matchBlock(f, '⚽')).join('\n\n'));
+  }
+
+  // Upcoming matches (extra line break before)
+  if (upcoming.length > 0) {
+    const upBlock = '\n⏳ <b>Upcoming</b>\n\n'
+      + upcoming.map(f => matchBlock(f, '🕐')).join('\n\n');
+    parts.push(upBlock);
+  }
+
+  // Standings
+  const userPicks = {};
+  for (const p of allPicks) {
+    if (!userPicks[p.user_id]) userPicks[p.user_id] = [];
+    userPicks[p.user_id].push(p);
+  }
+  const allUserIds = Object.keys(userPicks);
+  const profiles = await sbSelect('profiles', `id=in.(${allUserIds.map(u => `"${u}"`).join(',')})&select=id,team_name`);
+  const profileMap = {};
+  for (const p of profiles) profileMap[p.id] = p.team_name || '—';
+
+  const standings = [];
+  for (const [uid, picks] of Object.entries(userPicks)) {
+    let bps = 0, g = 0;
+    for (const p of picks) {
+      const r = resultMap[p.fixture_id]?.[p.element_id];
+      if (r) { bps += r.bps; if (r.is_goat) g++; }
+    }
+    standings.push({ uid, name: profileMap[uid] || '—', goats: g, bps });
+  }
+  standings.sort((a, b) => b.goats - a.goats || b.bps - a.bps);
+  const myPos = standings.findIndex(s => s.uid === userId) + 1;
+
+  const standLines = standings.map((s, i) => {
+    const arrow = s.uid === userId ? ' ◀️' : '';
+    return `${i + 1}. ${s.name}  ${s.goats}👑 ${s.bps} BPS${arrow}`;
+  });
+
+  const header = `⚽ <b>GW${gw}</b> — ${h(teamName)}`;
+  const summary = `\n📊 <b>${goats}</b> GOATs  |  <b>${totalBps}</b> BPS`;
+  const position = myPos > 0 ? `  |  🏆 ${myPos}/${standings.length}` : '';
+
+  const msg = header + '\n\n'
+    + parts.join('\n\n') + '\n'
+    + summary + position + '\n\n'
+    + '📋 <b>Standings</b>\n<code>'
+    + standLines.join('\n')
+    + '</code>';
+
+  await send(chatId, msg, 'HTML');
+}
+
 async function handleHelp(chatId) {
   await send(chatId,
     '⚽ GOAT Fantasy Bot\n\n'
     + 'Commands:\n'
-    + '/start — Link your GOAT account\n'
+    + '/gw — Current gameweek summary\n'
+    + '/gw 29 — Specific gameweek\n'
+    + '/start — Link your account\n'
     + '/status — Check link status\n'
     + '/unlink — Disconnect Telegram\n'
     + '/help — Show this message\n\n'
@@ -286,6 +495,19 @@ async function sendVerificationEmail(email, code) {
       </div>`,
     }),
   });
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const day = d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'Europe/London' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
+  return `${day} ${time}`;
+}
+
+function h(text) {
+  if (!text) return '';
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function maskEmail(email) {
