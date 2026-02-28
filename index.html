@@ -99,6 +99,8 @@ body{
 .tab.active{color:#BFB294;border-bottom-color:#BFB294}
 .tab.locked{color:#444;cursor:not-allowed;pointer-events:none}
 .tab.locked .lock-icon{display:inline;font-size:9px;margin-left:2px}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4444;margin-left:4px;vertical-align:middle;animation:live-pulse 1.5s ease-in-out infinite}
+@keyframes live-pulse{0%,100%{opacity:1}50%{opacity:0.2}}
 .tab-content{display:none}
 .tab-content.active{display:block}
 
@@ -856,15 +858,17 @@ async function loadGWData(gw) {
 
   viewGW = gw;
   updateGWNav();
-  // Clear stale data from previous GW
-  selections = {};
+  // Clear ALL stale data from previous GW
+  fixtures = [];
   results = {};
+  userPicks = {};
+  selections = {};
 
   try {
     // Cache gw_config if not cached
     if (!gwConfigs[gw]) {
-      const { data: cfg } = await sb.from('gw_config').select('*').eq('gw', gw).limit(1).single();
-      if (cfg) gwConfigs[gw] = cfg;
+      const { data: cfgArr } = await sb.from('gw_config').select('*').eq('gw', gw).limit(1);
+      if (cfgArr && cfgArr.length) gwConfigs[gw] = cfgArr[0];
     }
 
     // Load fixtures + picks in parallel
@@ -894,6 +898,15 @@ function updateTabStates() {
   } else {
     pickBtn.classList.remove('locked');
     pickBtn.textContent = 'Pick Team';
+  }
+
+  // Live tab: blinking red dot if any match is live in viewed GW
+  const liveBtn = document.getElementById('tab-btn-live');
+  const hasLive = fixtures.some(f => f.status === 'live');
+  if (hasLive) {
+    liveBtn.innerHTML = 'Live<span class="live-dot"></span>';
+  } else {
+    liveBtn.textContent = 'Live';
   }
 
   // My Team tab: locked if no picks for viewGW or guest
