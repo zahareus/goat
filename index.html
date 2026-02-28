@@ -19,14 +19,20 @@ body{
   user-select:none;
 }
 
-/* ===== AUTH GATE ===== */
-.auth-screen{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:100vh;padding:24px;
+/* ===== AUTH MODAL ===== */
+.auth-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);
+  align-items:center;justify-content:center;z-index:500;padding:24px;
 }
-.auth-logo{width:120px;height:120px;margin-bottom:24px}
-.auth-title{font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;margin-bottom:6px}
-.auth-sub{font-size:12px;color:#777;letter-spacing:1px;margin-bottom:36px}
+.auth-modal.open{display:flex}
+.auth-modal-panel{
+  display:flex;flex-direction:column;align-items:center;
+  position:relative;max-width:420px;width:100%;
+}
+.auth-modal-close{position:absolute;top:-8px;right:-8px;color:#666;font-size:24px;cursor:pointer;line-height:1;z-index:10}
+.auth-modal-close:hover{color:#fff}
+.auth-logo{width:80px;height:80px;margin-bottom:16px}
+.auth-sub{font-size:12px;color:#777;letter-spacing:1px;margin-bottom:24px}
 .auth-box{
   background:#111;border:1px solid #2a2a2a;padding:28px 24px;
   width:min(380px,100%);
@@ -49,7 +55,7 @@ body{
 .auth-msg.success{color:#4CAF50}
 
 /* ===== NAV ===== */
-.app-wrap{display:none}
+.app-wrap{}
 .nav{
   background:#0d0d0d;border-bottom:1px solid #2a2a2a;
   padding:0 20px;display:flex;align-items:center;justify-content:space-between;
@@ -488,20 +494,23 @@ tr.lb-picks-row td{padding:6px 12px 10px}
 </head>
 <body>
 
-<!-- ===== AUTH SCREEN ===== -->
-<div id="auth-screen" class="auth-screen">
-  <img src="assets/logo.png" class="auth-logo" alt="GOAT">
-  <div class="auth-sub">Pick the Greatest of All Time</div>
-  <div class="auth-box">
-    <h2>Sign in with Email</h2>
-    <input type="email" id="auth-email" class="auth-input" placeholder="your@email.com" autocomplete="email">
-    <button id="auth-submit" class="auth-btn" onclick="handleAuth()">Send Magic Link</button>
-    <div id="auth-msg" class="auth-msg"></div>
+<!-- ===== AUTH MODAL (overlay, not a blocker) ===== -->
+<div id="auth-modal" class="auth-modal" onclick="if(event.target===this)closeAuthModal()">
+  <div class="auth-modal-panel">
+    <div class="auth-modal-close" onclick="closeAuthModal()">&#x2715;</div>
+    <img src="assets/logo.png" class="auth-logo" alt="GOAT">
+    <div class="auth-sub">Pick the Greatest of All Time</div>
+    <div class="auth-box">
+      <h2>Sign in with Email</h2>
+      <input type="email" id="auth-email" class="auth-input" placeholder="your@email.com" autocomplete="email">
+      <button id="auth-submit" class="auth-btn" onclick="handleAuth()">Send Magic Link</button>
+      <div id="auth-msg" class="auth-msg"></div>
+    </div>
   </div>
 </div>
 
-<!-- ===== APP (hidden until auth) ===== -->
-<div id="app-wrap" class="app-wrap">
+<!-- ===== APP ===== -->
+<div id="app-wrap" class="app-wrap" style="display:block">
 
 <!-- NAV -->
 <div class="nav">
@@ -520,9 +529,10 @@ tr.lb-picks-row td{padding:6px 12px 10px}
       Menu
     </button>
     <div id="nav-dropdown" class="nav-dropdown">
-      <a onclick="openPage('profile')">Profile</a>
+      <a id="menu-profile" onclick="openPage('profile')" style="display:none">Profile</a>
       <a onclick="openPage('rules')">Rules</a>
-      <a onclick="handleSignOut()">Sign Out</a>
+      <a id="menu-signin" onclick="showAuthModal();closeMenu()" style="display:none">Sign In</a>
+      <a id="menu-signout" onclick="handleSignOut()" style="display:none">Sign Out</a>
     </div>
   </div>
 </div>
@@ -686,20 +696,25 @@ async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     currentUser = session.user;
-    showApp();
   }
 
   // Listen for auth changes (magic link callback)
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
-      showApp();
+      closeAuthModal();
+      // Reload with user context
+      loadAppData();
     }
     if (event === 'SIGNED_OUT') {
       currentUser = null;
-      showAuth();
+      // Reload in guest mode
+      loadAppData();
     }
   });
+
+  // Always load the app (guest or authenticated)
+  loadAppData();
 }
 
 async function handleAuth() {
@@ -714,7 +729,7 @@ async function handleAuth() {
 
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.origin }
+    options: { emailRedirectTo: window.location.href }
   });
 
   btn.disabled = false;
@@ -732,19 +747,21 @@ async function handleSignOut() {
   closeMenu();
 }
 
-function showApp() {
-  document.getElementById('auth-screen').style.display = 'none';
-  document.getElementById('app-wrap').style.display = 'block';
-  loadAppData();
+function showAuthModal() {
+  document.getElementById('auth-msg').textContent = '';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-modal').classList.add('open');
 }
 
-function showAuth() {
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('app-wrap').style.display = 'none';
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.remove('open');
 }
 
 // ===== DATA LOADING =====
 async function loadAppData() {
+  // Update menu for auth state
+  updateMenuState();
+
   // Load GW config (active)
   const { data: gwData } = await sb.from('gw_config').select('*').eq('is_active', true).limit(1).single();
   if (gwData) {
@@ -758,7 +775,7 @@ async function loadAppData() {
 
   // Load players + stats once (they don't change per GW)
   await Promise.all([loadPlayers(), loadPlayerStats()]);
-  loadProfileData();
+  if (currentUser) loadProfileData();
 
   // Check URL hash for initial GW
   const hashGW = parseGWFromHash();
@@ -768,6 +785,13 @@ async function loadAppData() {
 
   // Load GW-specific data
   await loadGWData(viewGW);
+}
+
+function updateMenuState() {
+  const isAuth = !!currentUser;
+  document.getElementById('menu-profile').style.display = isAuth ? '' : 'none';
+  document.getElementById('menu-signout').style.display = isAuth ? '' : 'none';
+  document.getElementById('menu-signin').style.display = isAuth ? 'none' : '';
 }
 
 // ===== GW NAVIGATION =====
@@ -830,8 +854,8 @@ function updateTabStates() {
   const pickBtn = document.getElementById('tab-btn-pick');
   const myteamBtn = document.getElementById('tab-btn-myteam');
 
-  // Pick tab: locked if viewGW pick is locked
-  if (isViewGWPickLocked()) {
+  // Pick tab: locked if viewGW pick is locked (but NOT for guests — they can browse picks)
+  if (currentUser && isViewGWPickLocked()) {
     pickBtn.classList.add('locked');
     pickBtn.innerHTML = 'Pick Team <span class="lock-icon">&#x1F512;</span>';
   } else {
@@ -839,8 +863,8 @@ function updateTabStates() {
     pickBtn.textContent = 'Pick Team';
   }
 
-  // My Team tab: locked if no picks for viewGW
-  const hasPicks = Object.keys(userPicks).length > 0;
+  // My Team tab: locked if no picks for viewGW or guest
+  const hasPicks = currentUser && Object.keys(userPicks).length > 0;
   if (!hasPicks) {
     myteamBtn.classList.add('locked');
     myteamBtn.innerHTML = 'My Team <span class="lock-icon">&#x1F512;</span>';
@@ -866,7 +890,11 @@ function autoSelectTab() {
   const hasPicks = Object.keys(userPicks).length > 0;
   const locked = isViewGWPickLocked();
 
-  if (viewGW < activeGW) {
+  if (!currentUser) {
+    // Guest: Live for active/past GW, Pick for future (browsable)
+    if (viewGW > activeGW) switchTab('pick');
+    else switchTab('live');
+  } else if (viewGW < activeGW) {
     // Past GW → Standings
     switchTab('standings');
   } else if (locked && hasPicks) {
@@ -910,7 +938,11 @@ async function loadResults() {
 }
 
 async function loadUserPicks() {
-  if (!currentUser || !viewGW) return;
+  if (!currentUser || !viewGW) {
+    userPicks = {};
+    selections = {};
+    return;
+  }
   const { data } = await sb.from('picks').select('*').eq('user_id', currentUser.id).eq('gw', viewGW);
   userPicks = {};
   (data || []).forEach(p => { userPicks[p.fixture_id] = p; });
@@ -1117,6 +1149,7 @@ function getPlayersForFixture(f) {
 }
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
+  if (!currentUser) { showAuthModal(); return; }
   if (viewGW !== activeGW) { showToast('Cannot pick for this gameweek'); return; }
   if (locked) { showToast('This match is locked'); return; }
 
@@ -1311,7 +1344,8 @@ async function renderLiveTab() {
 
   // Build nav buttons
   let navHtml = '';
-  let firstActive = null;
+  let firstLive = null;
+  let lastFt = null;
   for (const f of fixtures) {
     const isLive = f.status === 'live';
     const isFt = f.status === 'ft';
@@ -1333,13 +1367,15 @@ async function renderLiveTab() {
       rankHtml = '<span class="lv-nav-rank' + (isGoat ? ' lv-rank-motm' : '') + '">' + rank + '</span>';
     }
 
-    const cls = !firstActive && (isLive || isFt) ? ' active' : '';
-    if (!firstActive && (isLive || isFt)) firstActive = f.id;
-    navHtml += '<div class="live-match-btn' + cls + '" data-fid="' + f.id + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
+    // Track first live and last FT
+    if (isLive && !firstLive) firstLive = f.id;
+    if (isFt) lastFt = f.id;
+
+    navHtml += '<div class="live-match-btn" data-fid="' + f.id + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
   }
 
-  // If no live/ft, select first fixture
-  if (!firstActive && fixtures.length) firstActive = fixtures[0].id;
+  // Smart match selection: first live → last FT → first fixture
+  let firstActive = firstLive || lastFt || (fixtures.length ? fixtures[0].id : null);
   if (!firstActive) return;
 
   nav.innerHTML = navHtml;
@@ -1690,7 +1726,7 @@ async function openProfile(elementId, code, name, team, pos, ph) {
 }
 
 function closeProfile() { document.getElementById('mb-profile-overlay').style.display = 'none'; }
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeProfile(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeProfile(); closeAuthModal(); } });
 
 function buildProfileHeader(name, team, pos, ph) {
   var col = POS_COLORS[pos] || '#BFB294';
@@ -1778,10 +1814,10 @@ function goToMatch(fixtureId) {
 
 // ===== UI HELPERS =====
 function switchTab(name) {
-  // Prevent switching to locked pick tab
-  if (name === 'pick' && isViewGWPickLocked()) return;
-  // Prevent switching to My Team if no picks
-  if (name === 'myteam' && Object.keys(userPicks).length === 0) return;
+  // Prevent switching to locked pick tab (only for authed users, guests can browse)
+  if (name === 'pick' && currentUser && isViewGWPickLocked()) return;
+  // Prevent switching to My Team if no picks or guest
+  if (name === 'myteam' && (!currentUser || Object.keys(userPicks).length === 0)) return;
 
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
