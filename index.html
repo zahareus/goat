@@ -478,6 +478,27 @@ tr.lb-picks-row td{padding:6px 12px 10px}
   letter-spacing:0.5px;font-weight:700;
 }
 .mt2-change:hover{background:#BFB294;color:#111}
+.mt2-actions{display:flex;gap:6px;margin-top:6px}
+.mt2-save,.mt2-cancel{
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;
+  padding:3px 8px;cursor:pointer;border:1px solid;
+}
+.mt2-save{background:#BFB294;color:#111;border-color:#BFB294}
+.mt2-save:hover{background:#d4c9a8}
+.mt2-cancel{background:none;color:#888;border-color:#444}
+.mt2-cancel:hover{color:#fff;border-color:#888}
+.mt2-card.changing{border-color:#fff;box-shadow:0 0 12px rgba(191,178,148,0.3)}
+
+/* My Team change panel */
+#mt-change-panel{display:none}
+#mt-change-panel.open{display:block;padding:0 0 40px}
+.mt-cp-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px 10px;
+}
+.mt-cp-title{font-size:13px;font-weight:900;color:#BFB294;letter-spacing:1px;text-transform:uppercase}
+.mt-cp-close{font-size:20px;color:#666;cursor:pointer;line-height:1;padding:4px 8px}
+.mt-cp-close:hover{color:#fff}
 
 /* ===== EMPTY / LOADING STATES ===== */
 .empty-state{text-align:center;padding:60px 24px;color:#555}
@@ -590,6 +611,7 @@ tr.lb-picks-row td{padding:6px 12px 10px}
         </div>
       </div>
     </div>
+    <div id="mt-change-panel"></div>
   </div>
 </div>
 
@@ -692,6 +714,9 @@ let players = {};       // element_id -> player
 let results = {};       // fixture_id -> [{element_id, bps, is_goat}]
 let userPicks = {};     // fixture_id -> {element_id, id (pick uuid)}
 let selections = {};    // fixture_id -> {element_id, code, name, img} (unsaved UI state)
+let changingFixtureId = null; // My Team inline change state
+let changeOrigElementId = null; // original pick before change
+let changeTempElementId = null; // currently previewed pick
 let playerStats = {};   // element_id -> {avgRank, formRank, goats}
 
 // ===== AUTH =====
@@ -826,6 +851,7 @@ function parseGWFromHash() {
 async function loadGWData(gw) {
   if (gwLoading) return;
   gwLoading = true;
+  if (changingFixtureId) mtClosePanel();
 
   viewGW = gw;
   updateGWNav();
@@ -1306,8 +1332,8 @@ async function submitPicks() {
   btn.textContent = 'Submit';
 }
 
-function sortMatch(fixtureId, mode, tabEl) {
-  const matchBlock = document.getElementById('match-' + fixtureId);
+function sortMatch(fixtureId, mode, tabEl, useRawId) {
+  const matchBlock = document.getElementById(useRawId ? fixtureId : 'match-' + fixtureId);
   matchBlock.querySelectorAll('.pos-tab').forEach(t => t.classList.remove('active'));
   tabEl.classList.add('active');
   const row = matchBlock.querySelector('.player-row');
@@ -1452,6 +1478,134 @@ function showLiveMatchContent(fixtureId) {
 }
 
 // ===== MY TEAM TAB =====
+// ===== MY TEAM — INLINE CHANGE =====
+function openChangePanel(fixtureId) {
+  // Close any existing panel first
+  if (changingFixtureId) mtClosePanel();
+
+  const f = fixtures.find(x => x.id === fixtureId);
+  if (!f) return;
+  const pick = userPicks[fixtureId];
+  if (!pick) return;
+
+  changingFixtureId = fixtureId;
+  changeOrigElementId = pick.element_id;
+  changeTempElementId = pick.element_id;
+
+  // Re-render cards to show Save/Cancel on the active card
+  renderMyTeam();
+
+  // Render the match block (same as Pick tab)
+  const panel = document.getElementById('mt-change-panel');
+  const matchPlayers = getPlayersForFixture(f);
+
+  const cards = matchPlayers.map(function(p, ci) {
+    const isSel = p.element_id === changeTempElementId;
+    const sc = isSel ? ' selected' : '';
+    const ps = playerStats[p.element_id] || {};
+    const avgR = ps.avgRank || 99;
+    const formR = ps.formRank || 99;
+    const goats = ps.goats || 0;
+    return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
+      + '<div class="phex-name-wrap">'
+      + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
+      + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
+      + '</div>'
+      + '<div class="phex-outer' + sc + '" onclick="mtSelectPlayer(' + fixtureId + ',' + p.element_id + ',this.closest(\'.phex-card\'))">'
+      + '<div class="phex-inner">'
+      + '<img src="' + CDN + p.code + '.png" loading="lazy" onerror="this.style.display=\'none\'" alt="">'
+      + '</div></div>'
+      + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
+      + '</div>';
+  }).join('');
+
+  const ko = new Date(f.kickoff_time);
+  const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+
+  panel.innerHTML = '<div class="mt-cp-header">'
+    + '<div class="mt-cp-title">' + f.home_short + ' v ' + f.away_short + ' \u00B7 ' + timeStr + '</div>'
+    + '<div class="mt-cp-close" onclick="mtCancelChange()">&#x2715;</div>'
+    + '</div>'
+    + '<div class="match-block" id="mt-match-' + fixtureId + '">'
+    + '<div class="pos-tabs">'
+    + '<div class="pos-tab active" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'all\',this,true)">All</div>'
+    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'avgrank\',this,true)">Avg Rank</div>'
+    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'form\',this,true)">Form</div>'
+    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'goats\',this,true)">\uD83D\uDC51 GOAT</div>'
+    + '</div>'
+    + '<div class="player-row-outer"><div class="player-row">' + cards + '</div></div>'
+    + '</div>';
+
+  panel.classList.add('open');
+
+  // Scroll panel into view
+  setTimeout(function() { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+}
+
+function mtSelectPlayer(fixtureId, elementId, cardEl) {
+  if (fixtureId !== changingFixtureId) return;
+
+  // Deselect all in change panel
+  const panel = document.getElementById('mt-match-' + fixtureId);
+  panel.querySelectorAll('.phex-card').forEach(c => {
+    c.classList.remove('selected');
+    c.querySelector('.phex-outer').classList.remove('selected');
+  });
+
+  // Select this card
+  cardEl.classList.add('selected');
+  cardEl.querySelector('.phex-outer').classList.add('selected');
+
+  changeTempElementId = elementId;
+
+  // Update the mt2-card preview
+  const pl = players[elementId];
+  if (pl) {
+    const img = document.getElementById('mt-img-' + fixtureId);
+    if (img) { img.src = CDN + pl.code + '.png'; img.style.display = ''; }
+    const nameEl = document.getElementById('mt-name-' + fixtureId);
+    if (nameEl) nameEl.textContent = pl.short_name || pl.name;
+    const posEl = document.getElementById('mt-pos-' + fixtureId);
+    if (posEl) posEl.textContent = pl.position;
+  }
+}
+
+async function mtSaveChange() {
+  if (!changingFixtureId || !changeTempElementId) return;
+  if (changeTempElementId !== changeOrigElementId) {
+    await saveSinglePick(changingFixtureId, changeTempElementId);
+  }
+  mtClosePanel();
+  renderMyTeam();
+}
+
+function mtCancelChange() {
+  if (!changingFixtureId) return;
+  // Revert card preview to original
+  if (changeOrigElementId) {
+    const pl = players[changeOrigElementId];
+    if (pl) {
+      const img = document.getElementById('mt-img-' + changingFixtureId);
+      if (img) { img.src = CDN + pl.code + '.png'; img.style.display = ''; }
+      const nameEl = document.getElementById('mt-name-' + changingFixtureId);
+      if (nameEl) nameEl.textContent = pl.short_name || pl.name;
+      const posEl = document.getElementById('mt-pos-' + changingFixtureId);
+      if (posEl) posEl.textContent = pl.position;
+    }
+  }
+  mtClosePanel();
+  renderMyTeam();
+}
+
+function mtClosePanel() {
+  changingFixtureId = null;
+  changeOrigElementId = null;
+  changeTempElementId = null;
+  const panel = document.getElementById('mt-change-panel');
+  panel.classList.remove('open');
+  panel.innerHTML = '';
+}
+
 function renderMyTeam() {
   const strip = document.getElementById('mt-strip');
   const cfg = gwConfigs[viewGW];
@@ -1504,23 +1658,31 @@ function renderMyTeam() {
     const bpsClass = (!isLive && !isFt) ? ' pending' : '';
     const bpsDisplay = (!isLive && !isFt) ? '\u2013' : bpsVal;
     const canChange = !isMatchLocked(f);
-    const changeBtn = canChange
-      ? '<div class="mt2-change" onclick="goToMatch(' + f.id + ')">Change</div>'
-      : '';
+    const isChanging = changingFixtureId === f.id;
+    let actionHtml = '';
+    if (isChanging) {
+      actionHtml = '<div class="mt2-actions">'
+        + '<div class="mt2-save" onclick="mtSaveChange()">Save</div>'
+        + '<div class="mt2-cancel" onclick="mtCancelChange()">Cancel</div>'
+        + '</div>';
+    } else if (canChange) {
+      actionHtml = '<div class="mt2-change" onclick="openChangePanel(' + f.id + ')">Change</div>';
+    }
+    const changingClass = isChanging ? ' changing' : '';
 
-    html += '<div class="mt2-card' + cardClass + '">'
+    html += '<div class="mt2-card' + cardClass + changingClass + '" id="mt-card-' + f.id + '">'
       + '<div class="mt2-header">'
       + '<div class="mt2-match">' + f.home_short + ' v ' + f.away_short + '</div>'
       + '<div class="mt2-status' + statusClass + '">' + statusText + '</div>'
       + '</div>'
       + '<div class="mt2-hex-wrap">'
-      + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.style.display=\'none\'" alt=""></div></div>'
+      + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img id="mt-img-' + f.id + '" src="' + CDN + pl.code + '.png" onerror="this.style.display=\'none\'" alt=""></div></div>'
       + '<div class="mt2-rank-badge">' + rank + '</div>'
       + '</div>'
-      + '<div class="mt2-name">' + esc(pl.short_name || pl.name) + '</div>'
-      + '<div class="mt2-pos">' + pl.position + '</div>'
+      + '<div class="mt2-name" id="mt-name-' + f.id + '">' + esc(pl.short_name || pl.name) + '</div>'
+      + '<div class="mt2-pos" id="mt-pos-' + f.id + '">' + pl.position + '</div>'
       + '<div class="mt2-bps' + bpsClass + '">' + bpsDisplay + '</div>'
-      + changeBtn
+      + actionHtml
       + '</div>';
   }
 
@@ -1815,6 +1977,8 @@ function goToMatch(fixtureId) {
 
 // ===== UI HELPERS =====
 function switchTab(name) {
+  // Close My Team change panel on tab switch
+  if (changingFixtureId) mtClosePanel();
   // Prevent switching to locked pick tab
   if (name === 'pick' && isViewGWPickLocked()) return;
   // Prevent switching to My Team if no picks or guest
