@@ -939,7 +939,12 @@ function renderMatchBlocks() {
     const matchPlayers = getPlayersForFixture(f);
 
     const badgeHtml = sel ? '<span class="match-selected-badge">\u2713 ' + sel.name + '</span>' : '';
-    const lockedHtml = locked ? '<span class="match-locked">\uD83D\uDD12 LOCKED</span>' : '';
+    const isFt = f.status === 'ft';
+    const isLive = f.status === 'live';
+    let lockedHtml = '';
+    if (isFt) lockedHtml = '<span class="match-locked" style="color:#666">FT ' + f.home_score + '-' + f.away_score + '</span>';
+    else if (isLive) lockedHtml = '<span class="match-locked">\u23F1 ' + f.minutes + "\u2019 " + f.home_score + '-' + f.away_score + '</span>';
+    else if (locked) lockedHtml = '<span class="match-locked">\uD83D\uDD12 LOCKED</span>';
     const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
 
     const cards = matchPlayers.map(function(p, ci) {
@@ -949,7 +954,7 @@ function renderMatchBlocks() {
       const avgR = ps.avgRank || 99;
       const formR = ps.formRank || 99;
       const goats = ps.goats || 0;
-      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + p.position + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
+      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formR + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
@@ -1214,16 +1219,19 @@ async function renderLiveTab() {
 
     const cls = !firstActive && (isLive || isFt) ? ' active' : '';
     if (!firstActive && (isLive || isFt)) firstActive = f.id;
-    navHtml += '<div class="live-match-btn' + cls + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
+    navHtml += '<div class="live-match-btn' + cls + '" data-fid="' + f.id + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
   }
 
-  // If no live/ft, select first
+  // If no live/ft, select first fixture
   if (!firstActive && fixtures.length) firstActive = fixtures[0].id;
   if (!firstActive) return;
 
-  // Make first one active if none was
-  navHtml = navHtml.replace('class="live-match-btn"', 'class="live-match-btn active"');
   nav.innerHTML = navHtml;
+  // Ensure first active button is marked
+  if (!nav.querySelector('.live-match-btn.active')) {
+    var firstBtn = nav.querySelector('.live-match-btn[data-fid="' + firstActive + '"]');
+    if (firstBtn) firstBtn.classList.add('active');
+  }
 
   showLiveMatchContent(firstActive);
 }
@@ -1317,16 +1325,17 @@ function renderMyTeam() {
     const isFt = f.status === 'ft';
     const matchResults = results[f.id] || [];
 
-    // Find rank
+    // Find rank (results are pre-sorted by bps desc)
     let rank = '–';
     let bpsVal = '–';
     let isGoat = false;
     if (matchResults.length) {
-      const idx = matchResults.findIndex(r => r.element_id === pick.element_id);
+      const sorted = [...matchResults].sort((a, b) => b.bps - a.bps);
+      const idx = sorted.findIndex(r => r.element_id === pick.element_id);
       if (idx >= 0) {
         rank = idx + 1;
-        bpsVal = matchResults[idx].bps;
-        isGoat = matchResults[idx].is_goat;
+        bpsVal = sorted[idx].bps;
+        isGoat = sorted[idx].is_goat;
       }
     }
 
@@ -1398,9 +1407,16 @@ async function loadStandings(gw) {
     const r = resMap[pick.fixture_id] && resMap[pick.fixture_id][pick.element_id];
     const bps = r ? r.bps : 0;
     const isGoat = r ? r.is_goat : false;
+    // Calculate rank from sorted results for this fixture
+    let pickRank = 0;
+    if (resMap[pick.fixture_id]) {
+      const fResults = Object.values(resMap[pick.fixture_id]).sort((a, b) => b.bps - a.bps);
+      const rIdx = fResults.findIndex(x => x.element_id === pick.element_id);
+      if (rIdx >= 0) pickRank = rIdx + 1;
+    }
     userScores[pick.user_id].bps += bps;
     if (isGoat) userScores[pick.user_id].goats++;
-    userScores[pick.user_id].picks.push({ fixture_id: pick.fixture_id, element_id: pick.element_id, bps, isGoat });
+    userScores[pick.user_id].picks.push({ fixture_id: pick.fixture_id, element_id: pick.element_id, bps, isGoat, rank: pickRank });
   });
 
   // Get profiles
@@ -1479,10 +1495,11 @@ function buildPicksRow(rowId, picks, gwFixtures) {
       stText = ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
     }
 
-    const rankText = p.bps > 0 ? '#' + (p.isGoat ? '1' : '–') : '–';
-    const goatMark = p.isGoat ? '<span class="lb-pick-motm">\u2713</span>' : '';
+    const rankText = p.rank > 0 ? '#' + p.rank : '–';
+    const bpsText = p.bps > 0 ? p.bps + ' BPS' : '';
+    const goatMark = p.isGoat ? ' <span class="lb-pick-motm">\uD83D\uDC51</span>' : '';
 
-    items += '<div class="lb-pick-item"><span class="lb-pick-match">' + matchLabel + '</span><span class="lb-pick-st' + stClass + '">' + stText + '</span><span class="lb-pick-player">' + esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')</span><span class="lb-pick-rank">' + rankText + '</span>' + goatMark + '</div>';
+    items += '<div class="lb-pick-item"><span class="lb-pick-match">' + matchLabel + '</span><span class="lb-pick-st' + stClass + '">' + stText + '</span><span class="lb-pick-player">' + esc(pl.short_name || pl.name) + ' (' + (pl.team_short||'') + ')</span><span class="lb-pick-rank">' + rankText + '</span><span style="color:#666;font-size:10px;margin-left:4px">' + bpsText + '</span>' + goatMark + '</div>';
   }
   return '<tr class="lb-picks-row" id="picks-r' + rowId + '" style="display:none"><td colspan="4"><div class="lb-picks-list">' + items + '</div></td></tr>';
 }
