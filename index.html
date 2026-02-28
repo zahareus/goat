@@ -729,7 +729,7 @@ async function handleAuth() {
 
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.href }
+    options: { emailRedirectTo: window.location.origin }
   });
 
   btn.disabled = false;
@@ -854,8 +854,8 @@ function updateTabStates() {
   const pickBtn = document.getElementById('tab-btn-pick');
   const myteamBtn = document.getElementById('tab-btn-myteam');
 
-  // Pick tab: locked if viewGW pick is locked (but NOT for guests — they can browse picks)
-  if (currentUser && isViewGWPickLocked()) {
+  // Pick tab: locked if viewGW pick is locked (for everyone)
+  if (isViewGWPickLocked()) {
     pickBtn.classList.add('locked');
     pickBtn.innerHTML = 'Pick Team <span class="lock-icon">&#x1F512;</span>';
   } else {
@@ -877,13 +877,11 @@ function updateTabStates() {
 function isViewGWPickLocked() {
   // Past GW: always locked
   if (viewGW < activeGW) return true;
-  // Future GW: not locked (viewable, but cards locked individually)
+  // Future GW: not locked (browsable, auth required to pick)
   if (viewGW > activeGW) return false;
-  // Active GW: locked if submitted AND any match started/finished
+  // Active GW: locked if any match has started or kickoff passed
   if (!fixtures.length) return false;
-  const submitted = Object.keys(userPicks).length > 0;
-  const anyStarted = fixtures.some(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
-  return submitted && anyStarted;
+  return fixtures.some(f => f.status !== 'scheduled' || new Date() >= new Date(f.kickoff_time));
 }
 
 function autoSelectTab() {
@@ -1814,8 +1812,8 @@ function goToMatch(fixtureId) {
 
 // ===== UI HELPERS =====
 function switchTab(name) {
-  // Prevent switching to locked pick tab (only for authed users, guests can browse)
-  if (name === 'pick' && currentUser && isViewGWPickLocked()) return;
+  // Prevent switching to locked pick tab
+  if (name === 'pick' && isViewGWPickLocked()) return;
   // Prevent switching to My Team if no picks or guest
   if (name === 'myteam' && (!currentUser || Object.keys(userPicks).length === 0)) return;
 
