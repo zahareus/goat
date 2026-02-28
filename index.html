@@ -1459,14 +1459,8 @@ function renderMyTeam() {
     return;
   }
 
-  // Sort picks: FT first, then live, then upcoming
-  const sortedFixtures = [...fixtures].sort((a, b) => {
-    const order = {ft: 0, live: 1, scheduled: 2};
-    return (order[a.status]||2) - (order[b.status]||2);
-  });
-
   let html = '';
-  for (const f of sortedFixtures) {
+  for (const f of fixtures) {
     const pick = userPicks[f.id];
     if (!pick) continue;
     const pl = players[pick.element_id];
