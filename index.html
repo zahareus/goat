@@ -1186,7 +1186,7 @@ function sortMatch(fixtureId, mode, tabEl) {
 
 // ===== LIVE TAB =====
 async function renderLiveTab() {
-  await loadResults();
+  await Promise.all([loadFixtures(), loadResults()]);
 
   const nav = document.getElementById('live-nav');
   const content = document.getElementById('live-match-content');
@@ -1680,9 +1680,11 @@ function switchTab(name) {
 
   closeMenu();
 
-  // Refresh live data when switching to live or myteam
+  // Refresh data when switching tabs
+  if (name === 'pick') { loadFixtures().then(() => { renderPickTab(); }); }
   if (name === 'live') renderLiveTab();
-  if (name === 'myteam') { loadResults().then(() => renderMyTeam()); }
+  if (name === 'myteam') { Promise.all([loadFixtures(), loadResults()]).then(() => renderMyTeam()); }
+  if (name === 'standings') { loadStandings(standingsGW); }
 }
 
 function togglePicks(rowId) {
