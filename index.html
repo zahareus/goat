@@ -592,10 +592,12 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .driver-popover-title{color:#BFB294 !important;font-size:14px !important;font-weight:900 !important;letter-spacing:1px !important}
 .driver-popover-description{color:#bbb !important;font-size:13px !important;line-height:1.6 !important}
 .driver-popover .driver-popover-progress-text{color:#777 !important}
-.driver-popover-prev-btn{background:transparent !important;color:#888 !important;border:1px solid #333 !important}
+.driver-popover-prev-btn{background:#222 !important;color:#fff !important;border:1px solid #444 !important}
+.driver-popover-prev-btn:hover{background:#333 !important}
 .driver-popover-next-btn,.driver-popover-close-btn-text{background:#BFB294 !important;color:#111 !important;font-weight:700 !important}
 .driver-popover-next-btn:hover,.driver-popover-close-btn-text:hover{background:#d4c9a8 !important}
-.driver-overlay{background:rgba(0,0,0,0.75) !important}
+.driver-active .driver-overlay{background:rgba(0,0,0,0.5) !important}
+.driver-active-element{box-shadow:0 0 0 3px #BFB294 !important}
 </style>
 </head>
 <body>
@@ -846,15 +848,13 @@ function startTour() {
     showProgress: true,
     animate: true,
     allowClose: true,
-    overlayColor: 'rgba(0,0,0,0.75)',
+    stagePadding: 8,
+    stageRadius: 4,
     onDestroyStarted: function() {
       localStorage.setItem('goat_tour_done', 'true');
-      // Switch back to pick tab if we ended up elsewhere
-      var pickTab = document.getElementById('tab-pick');
-      if (pickTab && !pickTab.classList.contains('active') && !isViewGWPickLocked()) {
-        switchTab('pick');
-      }
       driverObj.destroy();
+      // Restore proper tab after tour
+      autoSelectTab();
     },
     steps: [
       {
@@ -879,20 +879,9 @@ function startTour() {
         element: '#pick-matches .match-block .phex-card',
         popover: {
           title: 'Player Card',
-          description: 'Tap a player to select them. Gold border = your pick. Stats shown below: Avg BPS Rank, Form, GOAT count.',
+          description: 'Tap a player to select them. Gold border = your pick. Stats below: Avg BPS Rank, Form, GOAT count.',
           side: 'bottom',
-          align: 'center',
-          onNextClick: function() {
-            // Require user to click a player card to proceed
-            function onCardClick() {
-              document.removeEventListener('click', handler);
-              driverObj.moveNext();
-            }
-            function handler(e) {
-              if (e.target.closest('.phex-card')) onCardClick();
-            }
-            document.addEventListener('click', handler);
-          }
+          align: 'center'
         }
       },
       {
@@ -910,17 +899,7 @@ function startTour() {
           title: 'Live Tab',
           description: 'During matches, switch to Live to watch BPS scores update in real-time.',
           side: 'bottom',
-          align: 'center',
-          onNextClick: function() {
-            // Require user to click the Live tab to proceed
-            var liveBtn = document.getElementById('tab-btn-live');
-            function onClick() {
-              liveBtn.removeEventListener('click', onClick);
-              switchTab('live');
-              setTimeout(function() { driverObj.moveNext(); }, 300);
-            }
-            liveBtn.addEventListener('click', onClick);
-          }
+          align: 'center'
         }
       },
       {
