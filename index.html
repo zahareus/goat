@@ -977,17 +977,17 @@ async function loadGWData(gw) {
   // Update tab states immediately (gwLoading=true → pick locked)
   updateTabStates();
 
-  // Show loading in a visible tab
-  var activeTab = document.querySelector('.tab-content.active');
-  if (!activeTab) {
-    // No tab active yet (first load) — activate live tab as loading host
+  // Ensure a tab is visible during loading
+  if (!document.querySelector('.tab-content.active')) {
     document.getElementById('tab-live').classList.add('active');
     document.getElementById('tab-btn-live').classList.add('active');
-    activeTab = document.getElementById('tab-live');
   }
-  if (activeTab) {
-    activeTab.innerHTML = '<div class="loading-spinner">Loading GW ' + gw + '...</div>';
-  }
+
+  // Show loading inside each tab's content area (without destroying structure)
+  document.getElementById('pick-matches').innerHTML = '<div class="loading-spinner">Loading GW ' + gw + '...</div>';
+  document.getElementById('live-match-content').innerHTML = '<div class="loading-spinner">Loading GW ' + gw + '...</div>';
+  document.getElementById('live-nav').innerHTML = '';
+  document.getElementById('mt-strip').innerHTML = '<div class="loading-spinner" style="min-width:100vw">Loading GW ' + gw + '...</div>';
 
   try {
     // Cache gw_config if not cached
