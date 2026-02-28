@@ -194,6 +194,16 @@ body{
 .phex-info-btn:hover{background:#fff}
 .phex-card:hover .phex-info-btn{display:flex}
 
+/* Availability dots + text */
+.avail-dot{display:inline-block;width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-right:2px;vertical-align:middle}
+.avail-starter{background:#4a8c3f}
+.avail-starter_ques{background:#ffc107}
+.avail-ques{background:#f08c00}
+.avail-out,.avail-sus{background:#e25c3d}
+.avail-text{font-size:8px;font-weight:900;margin-right:2px;vertical-align:middle;letter-spacing:0.5px}
+.avail-in{color:#4a8c3f}
+.avail-out-text{color:#e25c3d}
+
 /* Profile modal overlay */
 #mb-profile-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,0.88);
@@ -721,6 +731,7 @@ let changeTempElementId = null; // currently previewed pick
 let playerStats = {};   // element_id -> {avgRank, formBps, goats}
 let statsMaxRound = 0;  // highest GW round in player_history
 let maxGW = null;       // highest GW with fixtures in DB
+let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 
 // ===== AUTH =====
 async function initAuth() {
@@ -809,7 +820,7 @@ async function loadAppData() {
   maxGW = maxGWData ? maxGWData.gw : activeGW;
 
   // Load players + stats once (they don't change per GW)
-  await Promise.all([loadPlayers(), loadPlayerStats()]);
+  await Promise.all([loadPlayers(), loadPlayerStats(), loadLineups()]);
   if (currentUser) loadProfileData();
 
   // Check URL hash for initial GW
@@ -1060,6 +1071,46 @@ async function loadPlayerStats() {
   }
 }
 
+// ===== LINEUPS (RotoWire) =====
+async function loadLineups() {
+  try {
+    const resp = await fetch('/api/lineups');
+    if (resp.ok) lineupsData = await resp.json();
+  } catch(e) { console.warn('Lineups unavailable'); }
+}
+
+function getAvailStatus(elementId) {
+  if (!lineupsData) return null;
+  for (const key of Object.keys(lineupsData)) {
+    const m = lineupsData[key];
+    for (const side of [m.home, m.away]) {
+      if (!side) continue;
+      const p = side.find(x => x.fpl_id === elementId);
+      if (p) return p.status;
+    }
+  }
+  return null;
+}
+
+function availHtml(elementId, fixture) {
+  // Confirmed lineups: within 75 min of kickoff or match started
+  if (fixture) {
+    const ko = new Date(fixture.kickoff_time);
+    const minsToKo = (ko - new Date()) / 60000;
+    if (fixture.status === 'live' || fixture.status === 'ft' || (minsToKo <= 75 && minsToKo > -15)) {
+      const st = getAvailStatus(elementId);
+      if (!st) return '';
+      if (st === 'starter' || st === 'starter_ques')
+        return '<span class="avail-text avail-in">IN</span>';
+      return '<span class="avail-text avail-out-text">OUT</span>';
+    }
+  }
+  // Predictions: colored dots
+  const st = getAvailStatus(elementId);
+  if (!st) return '';
+  return '<span class="avail-dot avail-' + st + '"></span>';
+}
+
 // ===== DEADLINE HELPERS =====
 function getFirstKickoff() {
   // Returns kickoff of first SCHEDULED (not yet started) fixture
@@ -1160,7 +1211,7 @@ function renderMatchBlocks() {
       const goats = ps.goats || 0;
       return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
-        + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
+        + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + availHtml(p.element_id, f) + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
         + '</div>'
         + '<div class="phex-outer' + sc + '" onclick="selectPlayer(' + f.id + ',' + p.element_id + ',this.closest(\'.phex-card\'),' + (locked?'true':'false') + ')">'
@@ -1571,7 +1622,7 @@ function openChangePanel(fixtureId) {
     const goats = ps.goats || 0;
     return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
       + '<div class="phex-name-wrap">'
-      + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + esc(p.short_name || p.name) + '</div>'
+      + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + availHtml(p.element_id, f) + esc(p.short_name || p.name) + '</div>'
       + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
       + '</div>'
       + '<div class="phex-outer' + sc + '" onclick="mtSelectPlayer(' + fixtureId + ',' + p.element_id + ',this.closest(\'.phex-card\'))">'
@@ -1742,7 +1793,7 @@ function renderMyTeam() {
       + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img id="mt-img-' + f.id + '" src="' + CDN + pl.code + '.png" onerror="this.style.display=\'none\'" alt=""></div></div>'
       + '<div class="mt2-rank-badge">' + rank + '</div>'
       + '</div>'
-      + '<div class="mt2-name" id="mt-name-' + f.id + '">' + esc(pl.short_name || pl.name) + '</div>'
+      + '<div class="mt2-name" id="mt-name-' + f.id + '">' + availHtml(pl.element_id, f) + esc(pl.short_name || pl.name) + '</div>'
       + '<div class="mt2-pos" id="mt-pos-' + f.id + '">' + pl.position + '</div>'
       + '<div class="mt2-bps' + bpsClass + '">' + bpsDisplay + '</div>'
       + actionHtml
