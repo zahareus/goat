@@ -721,6 +721,7 @@ let changingFixtureId = null; // My Team inline change state
 let changeOrigElementId = null; // original pick before change
 let changeTempElementId = null; // currently previewed pick
 let playerStats = {};   // element_id -> {avgRank, formRank, goats}
+let maxGW = null;       // highest GW with fixtures in DB
 
 // ===== AUTH =====
 async function initAuth() {
@@ -793,8 +794,11 @@ async function loadAppData() {
   // Update menu for auth state
   updateMenuState();
 
-  // Load GW config (active)
-  const { data: gwData } = await sb.from('gw_config').select('*').eq('is_active', true).limit(1).single();
+  // Load GW config (active) + discover max GW available
+  const [{ data: gwData }, { data: maxGWData }] = await Promise.all([
+    sb.from('gw_config').select('*').eq('is_active', true).limit(1).single(),
+    sb.from('fixtures').select('gw').order('gw', { ascending: false }).limit(1).single()
+  ]);
   if (gwData) {
     activeGW = gwData.gw;
     viewGW = gwData.gw;
@@ -803,6 +807,7 @@ async function loadAppData() {
     document.getElementById('pick-gw-title').textContent = 'No active gameweek';
     return;
   }
+  maxGW = maxGWData ? maxGWData.gw : activeGW;
 
   // Load players + stats once (they don't change per GW)
   await Promise.all([loadPlayers(), loadPlayerStats()]);
@@ -810,7 +815,7 @@ async function loadAppData() {
 
   // Check URL hash for initial GW
   const hashGW = parseGWFromHash();
-  if (hashGW && hashGW >= FIRST_GW && hashGW <= activeGW + 1) {
+  if (hashGW && hashGW >= FIRST_GW && hashGW <= maxGW) {
     viewGW = hashGW;
   }
 
@@ -828,14 +833,14 @@ function updateMenuState() {
 // ===== GW NAVIGATION =====
 function changeViewGW(delta) {
   const newGW = viewGW + delta;
-  if (newGW < FIRST_GW || newGW > activeGW + 1) return;
+  if (newGW < FIRST_GW || newGW > (maxGW || activeGW)) return;
   loadGWData(newGW);
 }
 
 function updateGWNav() {
   document.getElementById('gw-nav-label').textContent = 'GW ' + viewGW;
   document.getElementById('gw-prev').disabled = (viewGW <= FIRST_GW);
-  document.getElementById('gw-next').disabled = (viewGW >= activeGW + 1);
+  document.getElementById('gw-next').disabled = (viewGW >= (maxGW || activeGW));
   // Update URL hash
   const newHash = '#gw' + viewGW + '_' + SEASON;
   if (window.location.hash !== newHash) {
@@ -2095,7 +2100,7 @@ function esc(str) {
 window.addEventListener('hashchange', function() {
   if (!activeGW) return;
   const hashGW = parseGWFromHash();
-  if (hashGW && hashGW >= FIRST_GW && hashGW <= activeGW + 1 && hashGW !== viewGW) {
+  if (hashGW && hashGW >= FIRST_GW && hashGW <= (maxGW || activeGW) && hashGW !== viewGW) {
     loadGWData(hashGW);
   }
 });
