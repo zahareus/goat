@@ -441,6 +441,10 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .lbp-rank{color:#BFB294;font-weight:900;text-align:center}
 .lbp-bps{color:#888;font-weight:700;text-align:right}
 
+.lb-toggle{display:flex;gap:0;margin:0 16px 0;border:1px solid #333;overflow:hidden}
+.lb-toggle-btn{flex:1;padding:8px 0;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#777;background:#111;cursor:pointer;border:none;transition:all .2s}
+.lb-toggle-btn.active{background:#BFB294;color:#111}
+
 /* ===== RULES PAGE ===== */
 .page-overlay{
   display:none;position:fixed;inset:0;background:#1a1a1a;z-index:400;overflow-y:auto;
@@ -770,6 +774,7 @@ let playerStats = {};   // element_id -> {avgRank, formBps, goats}
 let statsMaxRound = 0;  // highest GW round in player_history
 let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
+let standingsMode = 'gw'; // 'gw' or 'season'
 
 // ===== AUTH =====
 async function initAuth() {
@@ -1843,14 +1848,27 @@ function renderMyTeam() {
 
 // ===== STANDINGS TAB =====
 async function loadStandings(gw) {
-
   const content = document.getElementById('standings-content');
+  if (standingsMode === 'season') {
+    await loadSeasonStandings(content);
+  } else {
+    await loadGWStandings(gw, content);
+  }
+}
+
+function switchStandings(mode) {
+  standingsMode = mode;
+  loadStandings(viewGW);
+}
+
+async function loadGWStandings(gw, content) {
+
   content.innerHTML = '<div class="loading-spinner">Loading standings...</div>';
 
   // Get all picks for this GW
   const { data: allPicks } = await sb.from('picks').select('*').eq('gw', gw);
   if (!allPicks || !allPicks.length) {
-    content.innerHTML = '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No standings yet</h3><p>Standings appear after picks are submitted</p></div>';
+    content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No standings yet</h3><p>Standings appear after picks are submitted</p></div>';
     return;
   }
 
@@ -1902,11 +1920,12 @@ async function loadStandings(gw) {
 
   // Find my position
   const myIdx = sorted.findIndex(s => s.uid === (currentUser ? currentUser.id : null));
-  const myRank = myIdx >= 0 ? myIdx + 1 : '–';
+  const myRank = myIdx >= 0 ? myIdx + 1 : '\u2013';
   const myEntry = myIdx >= 0 ? sorted[myIdx] : null;
 
   // Build HTML
-  let html = '<div class="lb-header">';
+  let html = buildStandingsToggle();
+  html += '<div class="lb-header">';
   html += '<div style="font-size:14px;font-weight:900;color:#fff">LEADERBOARD \u2014 GW' + gw + '</div>';
   html += '<div style="font-size:11px;color:#777;margin-top:4px">Ranked by: GOATs \u00B7 tiebreak: Total BPS &nbsp;\u00B7&nbsp; <span style="color:#BFB294;font-weight:700">' + sorted.length + ' managers</span></div>';
   html += '</div>';
@@ -1938,6 +1957,109 @@ async function loadStandings(gw) {
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
     html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
+  }
+
+  html += '</tbody></table>';
+  content.innerHTML = html;
+}
+
+function buildStandingsToggle() {
+  return '<div class="lb-toggle">'
+    + '<button class="lb-toggle-btn' + (standingsMode === 'gw' ? ' active' : '') + '" onclick="switchStandings(\'gw\')">Gameweek</button>'
+    + '<button class="lb-toggle-btn' + (standingsMode === 'season' ? ' active' : '') + '" onclick="switchStandings(\'season\')">Season</button>'
+    + '</div>';
+}
+
+async function loadSeasonStandings(content) {
+  content.innerHTML = '<div class="loading-spinner">Loading season standings...</div>';
+
+  // Get ALL picks across all GWs
+  const { data: allPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').gte('gw', FIRST_GW);
+  if (!allPicks || !allPicks.length) {
+    content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No season data yet</h3><p>Season standings appear after picks are submitted</p></div>';
+    return;
+  }
+
+  // Get ALL results for all fixtures with picks
+  const allFixtureIds = [...new Set(allPicks.map(p => p.fixture_id))];
+  // Fetch in batches of 200 to avoid URL length limits
+  let allResults = [];
+  for (let i = 0; i < allFixtureIds.length; i += 200) {
+    const batch = allFixtureIds.slice(i, i + 200);
+    const { data } = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', batch);
+    if (data) allResults = allResults.concat(data);
+  }
+
+  // Build results lookup
+  const resMap = {};
+  allResults.forEach(r => {
+    if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
+    resMap[r.fixture_id][r.element_id] = r;
+  });
+
+  // Aggregate per user: total GOATs, total BPS, GWs played
+  const userTotals = {};
+  allPicks.forEach(pick => {
+    if (!userTotals[pick.user_id]) userTotals[pick.user_id] = { goats: 0, bps: 0, gws: new Set() };
+    const r = resMap[pick.fixture_id] && resMap[pick.fixture_id][pick.element_id];
+    const bps = r ? r.bps : 0;
+    const isGoat = r ? r.is_goat : false;
+    userTotals[pick.user_id].bps += bps;
+    if (isGoat) userTotals[pick.user_id].goats++;
+    userTotals[pick.user_id].gws.add(pick.gw);
+  });
+
+  // Get profiles
+  const userIds = Object.keys(userTotals);
+  const { data: profiles } = await sb.from('profiles').select('*').in('id', userIds);
+  const profileMap = {};
+  (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+  // Sort: GOATs desc, BPS desc
+  const sorted = userIds.map(uid => ({
+    uid,
+    name: profileMap[uid] ? profileMap[uid].team_name : 'Unknown',
+    goats: userTotals[uid].goats,
+    bps: userTotals[uid].bps,
+    gwCount: userTotals[uid].gws.size
+  })).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
+
+  // Find my position
+  const myIdx = sorted.findIndex(s => s.uid === (currentUser ? currentUser.id : null));
+  const myRank = myIdx >= 0 ? myIdx + 1 : '\u2013';
+  const myEntry = myIdx >= 0 ? sorted[myIdx] : null;
+
+  // Build HTML
+  let html = buildStandingsToggle();
+  html += '<div class="lb-header">';
+  html += '<div style="font-size:14px;font-weight:900;color:#fff">SEASON STANDINGS</div>';
+  html += '<div style="font-size:11px;color:#777;margin-top:4px">All gameweeks combined \u00B7 <span style="color:#BFB294;font-weight:700">' + sorted.length + ' managers</span></div>';
+  html += '</div>';
+
+  if (myEntry) {
+    html += '<div class="lb-your-pos"><div>';
+    html += '<div style="font-size:11px;color:#777;margin-bottom:2px">YOUR POSITION</div>';
+    html += '<div class="lb-your-rank">#' + myRank + '</div>';
+    html += '</div><div class="lb-your-info">' + esc(myEntry.name) + '<br><span>' + myEntry.goats + ' GOATs</span> \u00B7 <span>' + myEntry.bps.toLocaleString() + ' BPS</span> \u00B7 <span>' + myEntry.gwCount + ' GWs</span></div></div>';
+  }
+
+  html += '<table class="lb-table"><thead><tr><th>#</th><th>Player</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th></tr></thead><tbody>';
+
+  const showCount = Math.min(20, sorted.length);
+  for (let i = 0; i < showCount; i++) {
+    const s = sorted[i];
+    const rank = i + 1;
+    const isMe = s.uid === (currentUser ? currentUser.id : null);
+    const rankCls = rank <= 3 ? ' top3' : '';
+    const nameCls = isMe ? ' me' : '';
+    const rowCls = isMe ? ' class="my-row"' : '';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '">' + esc(s.name) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+  }
+
+  if (myIdx >= 20) {
+    const gap = myIdx - showCount;
+    html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me">' + esc(myEntry.name) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
   }
 
   html += '</tbody></table>';
