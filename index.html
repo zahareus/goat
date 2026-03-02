@@ -1265,7 +1265,7 @@ async function loadFixtures() {
 }
 
 async function loadPlayers() {
-  const { data } = await sb.from('players').select('*');
+  const { data } = await sb.from('players').select('element_id,code,name,short_name,team_id,team_short,position');
   players = {};
   (data || []).forEach(p => { players[p.element_id] = p; });
 }
