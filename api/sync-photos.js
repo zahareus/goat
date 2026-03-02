@@ -2,7 +2,7 @@
 // Triggered manually or via n8n: GET /api/sync-photos?secret=GOAT_NOTIFY_SECRET
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const FPL_CDN = 'https://resources.premierleague.com/premierleague25/photos/players/110x140/';
 const BUCKET = 'player-photos';
 const SECRET = process.env.GOAT_NOTIFY_SECRET;
