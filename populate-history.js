@@ -4,7 +4,8 @@
 // Usage: node populate-history.js
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbnNzbnVybnpkcXdheHVhZGdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjIyNDcyNiwiZXhwIjoyMDg3ODAwNzI2fQ.ijaMMykqenSYWAgdwslUddnZxUriAf7ha60PDhIOsrA';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+if (!SERVICE_KEY) { console.error('Error: SUPABASE_SERVICE_KEY env var is required'); process.exit(1); }
 
 const FPL_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',

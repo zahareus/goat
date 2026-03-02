@@ -2,10 +2,10 @@
 // Triggered manually or via n8n: GET /api/sync-photos?secret=GOAT_NOTIFY_SECRET
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbnNzbnVybnpkcXdheHVhZGdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjIyNDcyNiwiZXhwIjoyMDg3ODAwNzI2fQ.ijaMMykqenSYWAgdwslUddnZxUriAf7ha60PDhIOsrA';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const FPL_CDN = 'https://resources.premierleague.com/premierleague25/photos/players/110x140/';
 const BUCKET = 'player-photos';
-const SECRET = process.env.GOAT_NOTIFY_SECRET || 'd3b29ba30e1db2c7a24d9f704c66befc';
+const SECRET = process.env.GOAT_NOTIFY_SECRET;
 
 module.exports = async function handler(req, res) {
   if (req.query.secret !== SECRET) {

@@ -11,7 +11,8 @@
  */
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbnNzbnVybnpkcXdheHVhZGdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjIyNDcyNiwiZXhwIjoyMDg3ODAwNzI2fQ.ijaMMykqenSYWAgdwslUddnZxUriAf7ha60PDhIOsrA';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+if (!SERVICE_KEY) { console.error('Error: SUPABASE_SERVICE_KEY env var is required'); process.exit(1); }
 const FPL_CDN = 'https://resources.premierleague.com/premierleague25/photos/players/110x140/';
 
 const BUCKET = 'player-photos';
