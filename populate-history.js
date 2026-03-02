@@ -87,7 +87,7 @@ async function main() {
                 // Upsert in batches of 100
                 for (let j = 0; j < rows.length; j += 100) {
                     const batch = rows.slice(j, j + 100);
-                    await sbFetch('/rest/v1/player_history', {
+                    await sbFetch('/rest/v1/player_history?on_conflict=element_id,fixture_id', {
                         method: 'POST',
                         prefer: 'resolution=merge-duplicates,return=minimal',
                         headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
