@@ -372,6 +372,10 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
   font-size:7px;font-weight:900;color:#fff;
 }
 .lv-nav-rank.lv-rank-motm{background:#BFB294;color:#111}
+.lv-card.lv-dnp{background:#1e1e1e;border:2px dashed #BFB294;opacity:.7}
+.lv-card.lv-dnp .lv-hex-outer{background:#BFB294}
+.lv-card.lv-dnp .lv-bps{color:#666}
+.lv-card.lv-dnp .lv-rank-badge{background:#BFB294;color:#111}
 
 /* ===== MY TEAM TAB (mt2) ===== */
 .mt2-section{padding:20px 0 80px;background:#1a1a1a}
@@ -1803,11 +1807,15 @@ async function renderLiveTab() {
     const myPick = userPicks[f.id];
     const matchResults = results[f.id] || [];
     let rankHtml = '';
-    if (myPick && matchResults.length) {
-      const idx = matchResults.findIndex(r => r.element_id === myPick.element_id);
-      const rank = idx >= 0 ? idx + 1 : '–';
-      const isGoat = idx === 0 && matchResults[0].is_goat;
-      rankHtml = '<span class="lv-nav-rank' + (isGoat ? ' lv-rank-motm' : '') + '">' + rank + '</span>';
+    if (myPick) {
+      if (matchResults.length) {
+        const idx = matchResults.findIndex(r => r.element_id === myPick.element_id);
+        const rank = idx >= 0 ? idx + 1 : '–';
+        const isGoat = idx === 0 && matchResults[0].is_goat;
+        rankHtml = '<span class="lv-nav-rank' + (isGoat ? ' lv-rank-motm' : '') + '">' + rank + '</span>';
+      } else {
+        rankHtml = '<span class="lv-nav-rank">–</span>';
+      }
     }
 
     // Track first live and last FT
@@ -1865,12 +1873,14 @@ function showLiveMatchContent(fixtureId) {
   // Player cards
   if (matchResults.length) {
     html += '<div class="live-strip-section"><div class="live-strip-wrap"><div class="live-strip">';
+    let pickFoundInResults = false;
     matchResults.forEach((r, idx) => {
       const pl = players[r.element_id];
       if (!pl) return;
       const rank = idx + 1;
       const isGoat = r.is_goat;
       const isYours = myPick && myPick.element_id === r.element_id;
+      if (isYours) pickFoundInResults = true;
       let cls = 'lv-card';
       if (isGoat) cls += ' lv-motm';
       else if (isYours) cls += ' lv-yours';
@@ -1885,6 +1895,35 @@ function showLiveMatchContent(fixtureId) {
         + '<div class="lv-bps">' + r.bps + '</div>'
         + '</div>';
     });
+    // Show user's pick with 0 BPS if they didn't appear in results (didn't play)
+    if (myPick && !pickFoundInResults) {
+      const pl = players[myPick.element_id];
+      if (pl) {
+        html += '<div class="lv-card lv-dnp">'
+          + '<div class="lv-hex-wrap">'
+          + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+          + '<div class="lv-rank-badge">–</div>'
+          + '</div>'
+          + '<div class="lv-name">' + esc(pl.short_name || pl.name) + '</div>'
+          + '<div class="lv-pos">' + pl.position + '</div>'
+          + '<div class="lv-bps">0</div>'
+          + '</div>';
+      }
+    }
+    html += '</div></div></div>';
+  } else if (myPick && players[myPick.element_id]) {
+    // No results yet but user has a pick — show it with 0
+    const pl = players[myPick.element_id];
+    html += '<div class="live-strip-section"><div class="live-strip-wrap"><div class="live-strip">';
+    html += '<div class="lv-card lv-dnp">'
+      + '<div class="lv-hex-wrap">'
+      + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+      + '<div class="lv-rank-badge">–</div>'
+      + '</div>'
+      + '<div class="lv-name">' + esc(pl.short_name || pl.name) + '</div>'
+      + '<div class="lv-pos">' + pl.position + '</div>'
+      + '<div class="lv-bps">0</div>'
+      + '</div>';
     html += '</div></div></div>';
   } else {
     html += '<div class="empty-state"><span class="emoji">&#x1F4CA;</span><h3>No BPS data yet</h3><p>BPS will update during the match</p></div>';
