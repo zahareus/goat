@@ -57,15 +57,25 @@ async function sbInsert(table, rows) {
 // === Main logic ===
 
 async function generateBotPicks() {
-  // 1. Get active GW config
-  const gwConfigs = await sbSelect('gw_config', 'is_active=eq.true&limit=1');
-  if (!gwConfigs.length) return { message: 'No active GW' };
-  const activeGW = gwConfigs[0].gw;
-  const deadline = gwConfigs[0].deadline ? new Date(gwConfigs[0].deadline) : null;
+  // 1. Find the target GW: active GW, or next GW with picks_open if active has no scheduled fixtures
+  const allGWConfigs = await sbSelect('gw_config', 'picks_open=eq.true&order=gw.asc');
+  if (!allGWConfigs.length) return { message: 'No GW with picks open' };
 
-  // 2. Get all fixtures for active GW
-  const fixtures = await sbSelect('fixtures', `gw=eq.${activeGW}&order=kickoff_time.asc`);
-  if (!fixtures.length) return { message: 'No fixtures for GW ' + activeGW };
+  // Try each open GW until we find one with scheduled fixtures
+  let targetGW = null;
+  let fixtures = [];
+  for (const cfg of allGWConfigs) {
+    const gwFixtures = await sbSelect('fixtures', `gw=eq.${cfg.gw}&status=eq.scheduled&order=kickoff_time.asc`);
+    if (gwFixtures.length) {
+      targetGW = cfg;
+      fixtures = gwFixtures;
+      break;
+    }
+  }
+  if (!targetGW) return { message: 'No GW with scheduled fixtures found' };
+
+  const activeGW = targetGW.gw;
+  const deadline = targetGW.deadline ? new Date(targetGW.deadline) : null;
 
   // Use first kickoff as deadline if no explicit deadline
   const firstKickoff = new Date(fixtures[0].kickoff_time);
