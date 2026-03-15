@@ -24,7 +24,7 @@
 
 -- Step 2: Create auth users for bots
 -- (Use Supabase Dashboard > Authentication > Add User for each)
--- Email pattern: bot-[name]@goatapp.club, password: BotGoat2026!
+-- Email pattern: bot-[name]@goatapp.club (password auto-generated)
 -- After creating users, get their UUIDs and update profiles below.
 
 -- Step 3: After creating auth users, update their profiles:

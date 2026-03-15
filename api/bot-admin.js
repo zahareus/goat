@@ -109,7 +109,7 @@ async function createBot(body) {
     headers: sbHeaders(),
     body: JSON.stringify({
       email,
-      password: 'BotGoat2026Auto!' + Date.now(),
+      password: crypto.randomUUID() + crypto.randomUUID(),
       email_confirm: true,
     }),
   });
