@@ -82,7 +82,7 @@ async function generateBotPicks() {
   const effectiveDeadline = deadline || firstKickoff;
 
   // 3. Get all bots
-  const bots = await sbSelect('profiles', 'is_bot=eq.true&select=id,team_name,bot_strategy,hours_before');
+  const bots = await sbSelect('profiles', 'is_bot=eq.true&bot_active=eq.true&select=id,team_name,bot_strategy,hours_before');
   if (!bots.length) return { message: 'No bots configured' };
 
   // 4. Check which bots should pick now

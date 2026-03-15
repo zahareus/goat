@@ -535,6 +535,51 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 }
 .tg-disconnect:hover{border-color:#ff4444;color:#ff4444}
 
+/* ===== ADMIN PAGE ===== */
+.admin-body{max-width:600px;margin:0 auto;padding:24px 20px}
+.admin-section{margin-bottom:28px}
+.admin-section-title{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;font-weight:700}
+.admin-section-title span{color:#BFB294}
+.admin-add-form{display:flex;flex-direction:column;gap:10px}
+.admin-input{
+  width:100%;background:#1a1a1a;border:1px solid #333;color:#fff;
+  padding:12px 14px;font-size:14px;outline:none;
+}
+.admin-input:focus{border-color:#BFB294}
+.admin-select{
+  width:100%;background:#1a1a1a;border:1px solid #333;color:#fff;
+  padding:12px 14px;font-size:13px;outline:none;appearance:auto;
+}
+.admin-select:focus{border-color:#BFB294}
+.admin-add-btn{
+  background:#BFB294;color:#111;border:none;padding:12px;
+  font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:1px;cursor:pointer;
+}
+.admin-add-btn:hover{background:#d4c9a8}
+.admin-add-btn:disabled{opacity:0.5;cursor:not-allowed}
+.admin-msg{font-size:12px;margin-top:8px;min-height:18px}
+.admin-msg.ok{color:#4CAF50}
+.admin-msg.err{color:#ff4444}
+
+.bot-card{
+  background:#111;border:1px solid #2a2a2a;padding:14px 16px;margin-bottom:8px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.bot-card.paused{opacity:0.5}
+.bot-info{flex:1;min-width:0}
+.bot-name{font-size:14px;font-weight:700;color:#fff;margin-bottom:4px}
+.bot-meta{font-size:11px;color:#777}
+.bot-meta span{margin-right:10px}
+.bot-strategy{color:#BFB294}
+.bot-actions{display:flex;gap:6px;flex-shrink:0}
+.bot-btn{
+  background:none;border:1px solid #444;color:#999;padding:6px 12px;
+  font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;
+}
+.bot-btn:hover{border-color:#BFB294;color:#BFB294}
+.bot-btn.del:hover{border-color:#ff4444;color:#ff4444}
+.bot-empty{color:#666;font-size:13px;padding:20px 0;text-align:center}
+
 /* Change button on My Team cards */
 .mt2-change{
   margin-top:4px;font-size:10px;color:#BFB294;cursor:pointer;
@@ -673,6 +718,7 @@ tr.lb-picks-row td{padding:6px 12px 8px}
       <a id="menu-profile" onclick="openPage('profile')" style="display:none">Profile</a>
       <a onclick="openPage('rules')">Rules</a>
       <a onclick="shareApp()">Invite Friends</a>
+      <a id="menu-admin" onclick="openPage('admin')" style="display:none">Bot Admin</a>
       <a id="menu-signin" onclick="showAuthModal();closeMenu()" style="display:none">Sign In</a>
       <a id="menu-signout" onclick="handleSignOut()" style="display:none">Sign Out</a>
     </div>
@@ -825,6 +871,47 @@ tr.lb-picks-row td{padding:6px 12px 8px}
           <span class="tg-connected-text">Connected via Telegram</span>
         </div>
         <button class="tg-disconnect" onclick="disconnectTelegram()">Disconnect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN PAGE (Bot Management) -->
+<div id="page-admin" class="page-overlay">
+  <div class="page-header">
+    <button class="page-back" onclick="closePage('admin')">&larr; Back</button>
+    <div class="page-title">Bot Admin</div>
+  </div>
+  <div class="admin-body">
+    <div class="admin-section">
+      <div class="admin-section-title">Add Bot</div>
+      <div class="admin-add-form">
+        <input type="text" id="admin-bot-name" class="admin-input" placeholder="Bot team name" maxlength="30">
+        <select id="admin-bot-strategy" class="admin-select">
+          <option value="">Select strategy...</option>
+          <option value="form">Form Chaser — top 3 by recent form</option>
+          <option value="goat">GOAT Hunter — top 3 by GOAT count</option>
+          <option value="rank">Rank Master — top 3 by avg rank</option>
+          <option value="home">Home Bias — home team, best by form</option>
+          <option value="away">Away Specialist — away team, best by form</option>
+          <option value="streak">Streak Rider — rising BPS trend</option>
+          <option value="ironman">Iron Man — most minutes played</option>
+          <option value="contrarian">Contrarian — avoids popular picks</option>
+          <option value="combo">Balanced — weighted form+goats+rank</option>
+          <option value="fwd_only">Striker — forwards only</option>
+          <option value="mid_only">Midfield Engine — midfielders only</option>
+          <option value="def_only">Clean Sheet — defenders + GKPs only</option>
+          <option value="chaos">Chaos Agent — fully random</option>
+        </select>
+        <button class="admin-add-btn" onclick="adminCreateBot()">+ Add Bot</button>
+      </div>
+      <div id="admin-add-msg" class="admin-msg"></div>
+    </div>
+
+    <div class="admin-section">
+      <div class="admin-section-title">Active Bots <span id="admin-bot-count"></span></div>
+      <div id="admin-bot-list">
+        <div class="loading-spinner">Loading bots...</div>
       </div>
     </div>
   </div>
@@ -1124,6 +1211,7 @@ function updateMenuState() {
   document.getElementById('menu-profile').style.display = isAuth ? '' : 'none';
   document.getElementById('menu-signout').style.display = isAuth ? '' : 'none';
   document.getElementById('menu-signin').style.display = isAuth ? 'none' : '';
+  document.getElementById('menu-admin').style.display = isAdmin() ? '' : 'none';
 }
 
 // ===== GW NAVIGATION =====
@@ -2668,6 +2756,78 @@ document.addEventListener('click', function(e) {
 function openPage(name) {
   document.getElementById('page-' + name).classList.add('open');
   closeMenu();
+  if (name === 'admin') adminLoadBots();
+}
+
+// ===== BOT ADMIN =====
+async function adminApiCall(action, body) {
+  const session = await sb.auth.getSession();
+  const token = session.data.session ? session.data.session.access_token : null;
+  if (!token) { showToast('Not authenticated'); return null; }
+  const resp = await fetch('/api/bot-admin?action=' + action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return resp.json();
+}
+
+async function adminLoadBots() {
+  const list = document.getElementById('admin-bot-list');
+  list.innerHTML = '<div class="loading-spinner">Loading bots...</div>';
+  const res = await adminApiCall('list');
+  if (!res || !res.bots) { list.innerHTML = '<div class="bot-empty">Failed to load bots</div>'; return; }
+  const bots = res.bots;
+  document.getElementById('admin-bot-count').textContent = '(' + bots.filter(b => b.bot_active).length + ' active / ' + bots.length + ' total)';
+  if (!bots.length) { list.innerHTML = '<div class="bot-empty">No bots yet. Add one above.</div>'; return; }
+  const stratLabels = {form:'Form',goat:'GOAT',rank:'Rank',home:'Home',away:'Away',streak:'Streak',ironman:'Iron Man',contrarian:'Contrarian',combo:'Balanced',fwd_only:'FWD Only',mid_only:'MID Only',def_only:'DEF Only',chaos:'Chaos'};
+  list.innerHTML = bots.map(b =>
+    '<div class="bot-card' + (b.bot_active ? '' : ' paused') + '">'
+    + '<div class="bot-info">'
+    + '<div class="bot-name">' + esc(b.team_name) + '</div>'
+    + '<div class="bot-meta">'
+    + '<span class="bot-strategy">' + (stratLabels[b.bot_strategy] || b.bot_strategy) + '</span>'
+    + '<span>' + b.hours_before + 'h before</span>'
+    + '<span>' + (b.gws_played || 0) + ' GWs played</span>'
+    + '</div></div>'
+    + '<div class="bot-actions">'
+    + '<button class="bot-btn" onclick="adminToggleBot(\'' + b.id + '\')">' + (b.bot_active ? 'Pause' : 'Resume') + '</button>'
+    + '<button class="bot-btn del" onclick="adminDeleteBot(\'' + b.id + '\',\'' + esc(b.team_name) + '\')">Delete</button>'
+    + '</div></div>'
+  ).join('');
+}
+
+async function adminCreateBot() {
+  const nameEl = document.getElementById('admin-bot-name');
+  const stratEl = document.getElementById('admin-bot-strategy');
+  const msgEl = document.getElementById('admin-add-msg');
+  const name = nameEl.value.trim();
+  const strategy = stratEl.value;
+  if (!name) { msgEl.className = 'admin-msg err'; msgEl.textContent = 'Enter a team name'; return; }
+  if (!strategy) { msgEl.className = 'admin-msg err'; msgEl.textContent = 'Select a strategy'; return; }
+  msgEl.className = 'admin-msg'; msgEl.textContent = 'Creating...';
+  const res = await adminApiCall('create', { name, strategy });
+  if (res && res.ok) {
+    msgEl.className = 'admin-msg ok'; msgEl.textContent = 'Created! Picks in ' + res.bot.hours_before + 'h before deadline.';
+    nameEl.value = ''; stratEl.value = '';
+    adminLoadBots();
+    setTimeout(() => { msgEl.textContent = ''; }, 4000);
+  } else {
+    msgEl.className = 'admin-msg err'; msgEl.textContent = 'Error: ' + (res ? res.error : 'unknown');
+  }
+}
+
+async function adminToggleBot(id) {
+  const res = await adminApiCall('toggle', { id });
+  if (res && res.ok) adminLoadBots();
+  else showToast('Error toggling bot');
+}
+
+async function adminDeleteBot(id, name) {
+  if (!confirm('Delete bot "' + name + '"? Historical picks will be preserved in standings.')) return;
+  const res = await adminApiCall('delete', { id });
+  if (res && res.ok) adminLoadBots();
+  else showToast('Error deleting bot');
 }
 
 function closePage(name) {
