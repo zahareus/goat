@@ -854,6 +854,7 @@ const SEASON = '25-26';
 const PO = {GKP:1, DEF:2, MID:3, FWD:4};
 const POS_COLORS = {GKP:'#f5c518', DEF:'#00d5e0', MID:'#a0e000', FWD:'#ff6b35'};
 const FPL_TEAM_MAP = {"1":"ARS","2":"AVL","3":"BUR","4":"BOU","5":"BRE","6":"BHA","7":"CHE","8":"CRY","9":"EVE","10":"FUL","11":"LEE","12":"LIV","13":"MCI","14":"MUN","15":"NEW","16":"NFO","17":"SUN","18":"TOT","19":"WHU","20":"WOL"};
+const ADMIN_EMAIL = 'zahareus@gmail.com';
 
 // ===== STATE =====
 let currentUser = null;
@@ -875,6 +876,9 @@ let statsMaxRound = 0;  // highest GW round in player_history
 let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 let standingsMode = 'gw'; // 'gw' or 'season'
+
+function isAdmin() { return currentUser && currentUser.email === ADMIN_EMAIL; }
+function botLabel(profile) { return (isAdmin() && profile && profile.is_bot) ? ' \uD83E\uDD16' : ''; }
 
 // ===== ONBOARDING TOUR =====
 function startTour() {
@@ -2217,7 +2221,8 @@ async function loadGWStandings(gw, content) {
     name: profileMap[uid] ? profileMap[uid].team_name : 'Unknown',
     goats: userScores[uid].goats,
     bps: userScores[uid].bps,
-    picks: userScores[uid].picks
+    picks: userScores[uid].picks,
+    _profile: profileMap[uid]
   })).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
 
   // Find my position
@@ -2250,14 +2255,14 @@ async function loadGWStandings(gw, content) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + botLabel(s._profile) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + botLabel(myEntry._profile) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
@@ -2323,7 +2328,8 @@ async function loadSeasonStandings(content) {
     name: profileMap[uid] ? profileMap[uid].team_name : 'Unknown',
     goats: userTotals[uid].goats,
     bps: userTotals[uid].bps,
-    gwCount: userTotals[uid].gws.size
+    gwCount: userTotals[uid].gws.size,
+    _profile: profileMap[uid]
   })).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
 
   // Find my position
@@ -2355,13 +2361,13 @@ async function loadSeasonStandings(content) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '">' + esc(s.name) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '">' + esc(s.name) + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me">' + esc(myEntry.name) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me">' + esc(myEntry.name) + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
   }
 
   html += '</tbody></table>';
