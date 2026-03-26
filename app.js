@@ -187,6 +187,11 @@ async function initAuth() {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
       closeAuthModal();
+      // Save Google avatar URL to profile if available
+      const meta = session.user.user_metadata;
+      if (meta && meta.avatar_url) {
+        sb.from('profiles').update({ avatar_url: meta.avatar_url }).eq('id', session.user.id).then(() => {});
+      }
       // Reload with user context
       loadAppData().then(function() { maybeStartTour(); });
     }
@@ -1420,14 +1425,14 @@ async function loadGWStandings(gw, content) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-btn" onclick="togglePicks(\'' + i + '\')">' + esc(s.name) + botLabel(s._profile) + '</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-btn" onclick="togglePicks(\'me\')">' + esc(myEntry.name) + botLabel(myEntry._profile) + '</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-link" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'me\')">\u25BC</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
@@ -1526,13 +1531,13 @@ async function loadSeasonStandings(content) {
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '">' + esc(s.name) + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me">' + esc(myEntry.name) + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-link" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
   }
 
   html += '</tbody></table>';
@@ -1753,6 +1758,180 @@ function buildProfileHistory(history) {
     + '<thead><tr><th>GW</th><th>Opp</th><th>Min</th><th>BPS / Rank</th></tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '</table></div>';
+}
+
+// ===== MANAGER PROFILE =====
+async function openManagerProfile(uid) {
+  openPage('manager');
+  const content = document.getElementById('manager-profile-content');
+  content.innerHTML = '<div class="loading-spinner">Loading profile...</div>';
+
+  // Fetch profile
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', uid).single();
+  if (!profile) { content.innerHTML = '<div class="empty-state"><h3>Manager not found</h3></div>'; return; }
+
+  // Fetch avatar from auth metadata if it's the current user
+  let avatarUrl = profile.avatar_url || null;
+
+  // Fetch ALL picks for this user
+  const { data: allPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').eq('user_id', uid).gte('gw', FIRST_GW);
+  if (!allPicks || !allPicks.length) {
+    content.innerHTML = buildManagerHeader(profile, avatarUrl, null) + '<div class="empty-state" style="padding:40px 0"><h3>No picks yet</h3></div>';
+    return;
+  }
+
+  // Fetch results for all fixtures this user picked
+  const fIds = [...new Set(allPicks.map(p => p.fixture_id))];
+  let allResults = [];
+  for (let i = 0; i < fIds.length; i += 200) {
+    const batch = fIds.slice(i, i + 200);
+    const { data } = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', batch);
+    if (data) allResults = allResults.concat(data);
+  }
+  const resMap = {};
+  allResults.forEach(r => {
+    if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
+    resMap[r.fixture_id][r.element_id] = r;
+  });
+
+  // Compute per-GW stats
+  const gwStats = {};
+  const playerPickCount = {};
+  let totalGoats = 0, totalBps = 0, totalPicks = 0;
+  allPicks.forEach(pick => {
+    if (!gwStats[pick.gw]) gwStats[pick.gw] = { goats: 0, bps: 0, picks: 0 };
+    const r = resMap[pick.fixture_id] && resMap[pick.fixture_id][pick.element_id];
+    const bps = r ? r.bps : 0;
+    const isGoat = r ? r.is_goat : false;
+    gwStats[pick.gw].bps += bps;
+    gwStats[pick.gw].picks++;
+    if (isGoat) { gwStats[pick.gw].goats++; totalGoats++; }
+    totalBps += bps;
+    totalPicks++;
+    // Track favourite players
+    if (!playerPickCount[pick.element_id]) playerPickCount[pick.element_id] = 0;
+    playerPickCount[pick.element_id]++;
+  });
+
+  const gwCount = Object.keys(gwStats).length;
+  const avgGoatsPerGW = gwCount > 0 ? (totalGoats / gwCount).toFixed(1) : '0';
+
+  // Best/worst GW
+  const gwArr = Object.entries(gwStats).map(([gw, s]) => ({ gw: parseInt(gw), ...s }));
+  gwArr.sort((a, b) => b.goats - a.goats || b.bps - a.bps);
+  const bestGW = gwArr[0];
+  const worstGW = gwArr[gwArr.length - 1];
+
+  // Streaks (consecutive GWs with at least 1 GOAT)
+  const sortedGWs = gwArr.map(g => g.gw).sort((a, b) => a - b);
+  let currentStreak = 0, bestStreak = 0, runningStreak = 0;
+  for (const gw of sortedGWs) {
+    if (gwStats[gw].goats > 0) {
+      runningStreak++;
+      if (runningStreak > bestStreak) bestStreak = runningStreak;
+    } else {
+      runningStreak = 0;
+    }
+  }
+  // Current streak = from the last GW backwards
+  currentStreak = 0;
+  for (let i = sortedGWs.length - 1; i >= 0; i--) {
+    if (gwStats[sortedGWs[i]].goats > 0) currentStreak++;
+    else break;
+  }
+
+  // GOAT rate
+  const goatRate = totalPicks > 0 ? (totalGoats / totalPicks * 100).toFixed(1) : '0';
+
+  // Favourite players (top 3)
+  const favPlayers = Object.entries(playerPickCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([eid, count]) => {
+      const pl = players[parseInt(eid)];
+      return { name: pl ? (pl.short_name || pl.name) : 'Unknown', team: pl ? pl.team_short : '', count };
+    });
+
+  // Season rank — need all users' totals to calculate
+  const { data: allSeasonPicks } = await sb.from('picks').select('user_id,fixture_id,element_id').gte('gw', FIRST_GW);
+  let seasonRank = '-';
+  if (allSeasonPicks) {
+    const userTotals = {};
+    allSeasonPicks.forEach(pick => {
+      if (!userTotals[pick.user_id]) userTotals[pick.user_id] = { goats: 0, bps: 0 };
+      const r = resMap[pick.fixture_id] && resMap[pick.fixture_id][pick.element_id];
+      if (r) {
+        userTotals[pick.user_id].bps += r.bps;
+        if (r.is_goat) userTotals[pick.user_id].goats++;
+      }
+    });
+    const sorted = Object.entries(userTotals).sort((a, b) => b[1].goats - a[1].goats || b[1].bps - a[1].bps);
+    const idx = sorted.findIndex(([id]) => id === uid);
+    if (idx >= 0) seasonRank = '#' + (idx + 1);
+  }
+
+  // Build HTML
+  let html = buildManagerHeader(profile, avatarUrl, seasonRank);
+
+  // Stat cards
+  html += '<div class="mp-stats">';
+  html += mpStatCard(totalGoats, 'GOATs', '\uD83D\uDC51');
+  html += mpStatCard(totalBps.toLocaleString(), 'Total BPS', '');
+  html += mpStatCard(gwCount, 'GWs Played', '');
+  html += mpStatCard(avgGoatsPerGW, 'Avg GOATs/GW', '');
+  html += '</div>';
+
+  // Secondary stats
+  html += '<div class="mp-secondary">';
+  html += '<div class="mp-sec-row"><span class="mp-sec-label">GOAT Rate</span><span class="mp-sec-val">' + goatRate + '%</span></div>';
+  html += '<div class="mp-sec-row"><span class="mp-sec-label">Best Streak</span><span class="mp-sec-val">' + bestStreak + ' GWs</span></div>';
+  html += '<div class="mp-sec-row"><span class="mp-sec-label">Current Streak</span><span class="mp-sec-val">' + currentStreak + ' GWs</span></div>';
+  if (bestGW) html += '<div class="mp-sec-row"><span class="mp-sec-label">Best GW</span><span class="mp-sec-val">GW' + bestGW.gw + ' (' + bestGW.goats + ' GOATs, ' + bestGW.bps + ' BPS)</span></div>';
+  if (worstGW && gwCount > 1) html += '<div class="mp-sec-row"><span class="mp-sec-label">Worst GW</span><span class="mp-sec-val">GW' + worstGW.gw + ' (' + worstGW.goats + ' GOATs, ' + worstGW.bps + ' BPS)</span></div>';
+  html += '</div>';
+
+  // Favourite players
+  if (favPlayers.length) {
+    html += '<div class="mp-section-title">FAVOURITE PLAYERS</div>';
+    html += '<div class="mp-fav-players">';
+    favPlayers.forEach((fp, i) => {
+      const medal = i === 0 ? '\uD83E\uDD47' : i === 1 ? '\uD83E\uDD48' : '\uD83E\uDD49';
+      html += '<div class="mp-fav-row"><span>' + medal + ' ' + esc(fp.name) + ' <span class="mp-fav-team">' + esc(fp.team) + '</span></span><span class="mp-fav-count">' + fp.count + 'x picked</span></div>';
+    });
+    html += '</div>';
+  }
+
+  // GW-by-GW table
+  html += '<div class="mp-section-title">GAMEWEEK HISTORY</div>';
+  html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th></tr></thead><tbody>';
+  gwArr.sort((a, b) => b.gw - a.gw);
+  gwArr.forEach(g => {
+    const rowCls = g.goats >= 3 ? ' class="mp-highlight"' : '';
+    html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  content.innerHTML = html;
+}
+
+function buildManagerHeader(profile, avatarUrl, seasonRank) {
+  const name = profile.team_name || 'Unknown';
+  const initial = name.charAt(0).toUpperCase();
+  const avatarHtml = avatarUrl
+    ? '<img src="' + esc(avatarUrl) + '" class="mp-avatar-img" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" alt=""><div class="mp-avatar-initial" style="display:none">' + initial + '</div>'
+    : '<div class="mp-avatar-initial">' + initial + '</div>';
+  const botBadge = profile.is_bot ? ' <span class="mp-bot-badge">\uD83E\uDD16 Bot</span>' : '';
+  const rankHtml = seasonRank ? '<div class="mp-rank">Season Rank: <strong>' + seasonRank + '</strong></div>' : '';
+  return '<div class="mp-header">'
+    + '<div class="mp-avatar">' + avatarHtml + '</div>'
+    + '<div class="mp-info">'
+    + '<div class="mp-name">' + esc(name) + botBadge + '</div>'
+    + rankHtml
+    + '</div></div>';
+}
+
+function mpStatCard(val, label, emoji) {
+  return '<div class="mp-stat-card"><div class="mp-stat-val">' + val + (emoji ? ' ' + emoji : '') + '</div><div class="mp-stat-label">' + label + '</div></div>';
 }
 
 // ===== NAVIGATION HELPERS =====
