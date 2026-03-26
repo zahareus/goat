@@ -36,6 +36,15 @@ let standingsMode = 'gw'; // 'gw' or 'season'
 function isAdmin() { return currentUser && currentUser.email === ADMIN_EMAIL; }
 function botLabel(profile) { return (isAdmin() && profile && profile.is_bot) ? ' \uD83E\uDD16' : ''; }
 
+// Assign sport-style tied ranks: equal stats = same rank, next rank skips (1,1,3 not 1,2,3)
+function assignTiedRanks(sorted) {
+  for (let i = 0; i < sorted.length; i++) {
+    if (i === 0) { sorted[i].rank = 1; continue; }
+    const prev = sorted[i - 1];
+    sorted[i].rank = (sorted[i].goats === prev.goats && sorted[i].bps === prev.bps) ? prev.rank : i + 1;
+  }
+}
+
 // ===== ONBOARDING TOUR =====
 function startTour() {
   var driverObj = window.driver.js.driver({
@@ -1395,9 +1404,12 @@ async function loadGWStandings(gw, content) {
     _profile: profileMap[uid]
   })).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
 
+  // Assign tied ranks (1, 1, 3 not 1, 2, 3)
+  assignTiedRanks(sorted);
+
   // Find my position
   const myIdx = sorted.findIndex(s => s.uid === (currentUser ? currentUser.id : null));
-  const myRank = myIdx >= 0 ? myIdx + 1 : '\u2013';
+  const myRank = myIdx >= 0 ? sorted[myIdx].rank : '\u2013';
   const myEntry = myIdx >= 0 ? sorted[myIdx] : null;
 
   // Build HTML
@@ -1420,7 +1432,7 @@ async function loadGWStandings(gw, content) {
   const showCount = Math.min(20, sorted.length);
   for (let i = 0; i < showCount; i++) {
     const s = sorted[i];
-    const rank = i + 1;
+    const rank = s.rank;
     const isMe = s.uid === (currentUser ? currentUser.id : null);
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
@@ -1502,9 +1514,12 @@ async function loadSeasonStandings(content) {
     _profile: profileMap[uid]
   })).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
 
+  // Assign tied ranks
+  assignTiedRanks(sorted);
+
   // Find my position
   const myIdx = sorted.findIndex(s => s.uid === (currentUser ? currentUser.id : null));
-  const myRank = myIdx >= 0 ? myIdx + 1 : '\u2013';
+  const myRank = myIdx >= 0 ? sorted[myIdx].rank : '\u2013';
   const myEntry = myIdx >= 0 ? sorted[myIdx] : null;
 
   // Build HTML
@@ -1526,7 +1541,7 @@ async function loadSeasonStandings(content) {
   const showCount = Math.min(20, sorted.length);
   for (let i = 0; i < showCount; i++) {
     const s = sorted[i];
-    const rank = i + 1;
+    const rank = s.rank;
     const isMe = s.uid === (currentUser ? currentUser.id : null);
     const rankCls = rank <= 3 ? ' top3' : '';
     const nameCls = isMe ? ' me' : '';
@@ -1852,11 +1867,15 @@ async function openManagerProfile(uid) {
       return { name: pl ? (pl.short_name || pl.name) : 'Unknown', team: pl ? pl.team_short : '', count };
     });
 
-  // Season rank — need all users' totals to calculate
-  const { data: allSeasonPicks } = await sb.from('picks').select('user_id,fixture_id,element_id').gte('gw', FIRST_GW);
+  // Season rank + per-GW ranks — need all users' picks
+  const { data: allSeasonPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').gte('gw', FIRST_GW);
   let seasonRank = '-';
+  const gwRanks = {}; // gw -> { rank, total }
   if (allSeasonPicks) {
+    // Season totals
     const userTotals = {};
+    // Per-GW totals for all users
+    const gwUserTotals = {}; // gw -> uid -> { goats, bps }
     allSeasonPicks.forEach(pick => {
       if (!userTotals[pick.user_id]) userTotals[pick.user_id] = { goats: 0, bps: 0 };
       const r = resMap[pick.fixture_id] && resMap[pick.fixture_id][pick.element_id];
@@ -1864,10 +1883,31 @@ async function openManagerProfile(uid) {
         userTotals[pick.user_id].bps += r.bps;
         if (r.is_goat) userTotals[pick.user_id].goats++;
       }
+      // Per-GW
+      if (!gwUserTotals[pick.gw]) gwUserTotals[pick.gw] = {};
+      if (!gwUserTotals[pick.gw][pick.user_id]) gwUserTotals[pick.gw][pick.user_id] = { goats: 0, bps: 0 };
+      if (r) {
+        gwUserTotals[pick.gw][pick.user_id].bps += (r.bps || 0);
+        if (r.is_goat) gwUserTotals[pick.gw][pick.user_id].goats++;
+      }
     });
-    const sorted = Object.entries(userTotals).sort((a, b) => b[1].goats - a[1].goats || b[1].bps - a[1].bps);
-    const idx = sorted.findIndex(([id]) => id === uid);
-    if (idx >= 0) seasonRank = '#' + (idx + 1);
+    // Season rank with ties
+    const seasonSorted = Object.entries(userTotals).sort((a, b) => b[1].goats - a[1].goats || b[1].bps - a[1].bps);
+    for (let i = 0; i < seasonSorted.length; i++) {
+      const tiedRank = (i === 0) ? 1 : (seasonSorted[i][1].goats === seasonSorted[i-1][1].goats && seasonSorted[i][1].bps === seasonSorted[i-1][1].bps) ? seasonSorted[i-1]._rank : i + 1;
+      seasonSorted[i]._rank = tiedRank;
+      if (seasonSorted[i][0] === uid) seasonRank = '#' + tiedRank;
+    }
+    // Per-GW ranks with ties
+    for (const gw of Object.keys(gwUserTotals)) {
+      const gwSorted = Object.entries(gwUserTotals[gw]).sort((a, b) => b[1].goats - a[1].goats || b[1].bps - a[1].bps);
+      const total = gwSorted.length;
+      for (let i = 0; i < gwSorted.length; i++) {
+        const tiedRank = (i === 0) ? 1 : (gwSorted[i][1].goats === gwSorted[i-1][1].goats && gwSorted[i][1].bps === gwSorted[i-1][1].bps) ? gwSorted[i-1]._rank : i + 1;
+        gwSorted[i]._rank = tiedRank;
+        if (gwSorted[i][0] === uid) gwRanks[gw] = { rank: tiedRank, total };
+      }
+    }
   }
 
   // Build HTML
@@ -1903,11 +1943,13 @@ async function openManagerProfile(uid) {
 
   // GW-by-GW table
   html += '<div class="mp-section-title">GAMEWEEK HISTORY</div>';
-  html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th></tr></thead><tbody>';
+  html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th><th style="text-align:right">Rank</th></tr></thead><tbody>';
   gwArr.sort((a, b) => b.gw - a.gw);
   gwArr.forEach(g => {
     const rowCls = g.goats >= 3 ? ' class="mp-highlight"' : '';
-    html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td></tr>';
+    const gwR = gwRanks[g.gw];
+    const rankDisplay = gwR ? gwR.rank + '/' + gwR.total : '\u2013';
+    html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td><td style="text-align:right">' + rankDisplay + '</td></tr>';
   });
   html += '</tbody></table></div>';
 
