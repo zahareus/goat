@@ -1966,8 +1966,8 @@ async function openManagerProfile(uid) {
   html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th><th style="text-align:right">Rank</th></tr></thead><tbody>';
   gwArr.sort((a, b) => b.gw - a.gw);
   gwArr.forEach(g => {
-    const rowCls = g.goats >= 3 ? ' class="mp-highlight"' : '';
     const gwR = gwRanks[g.gw];
+    const rowCls = (gwR && gwR.rank === 1) ? ' class="mp-highlight"' : '';
     const rankDisplay = gwR ? gwR.rank + '/' + gwR.total : '\u2013';
     html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td><td style="text-align:right">' + rankDisplay + '</td></tr>';
   });
