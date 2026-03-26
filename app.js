@@ -1471,29 +1471,36 @@ function buildStandingsToggle() {
 async function loadSeasonStandings(content) {
   content.innerHTML = '<div class="loading-spinner">Loading season standings...</div>';
 
-  // Get ALL picks across all GWs
-  const { data: allPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').gte('gw', FIRST_GW);
-  if (!allPicks || !allPicks.length) {
+  // Fetch picks + fixtures + results per GW in parallel (avoids 1000-row limit)
+  const allGWNumbers = [];
+  for (let g = FIRST_GW; g <= (maxGW || 38); g++) allGWNumbers.push(g);
+  const gwFetches = allGWNumbers.map(async gw => {
+    const [picksR, fixtR] = await Promise.all([
+      sb.from('picks').select('user_id,gw,fixture_id,element_id').eq('gw', gw),
+      sb.from('fixtures').select('id').eq('gw', gw)
+    ]);
+    const gwPicks = picksR.data || [];
+    if (!gwPicks.length) return { picks: [], results: [] };
+    const gwFIds = (fixtR.data || []).map(f => f.id);
+    const resR = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', gwFIds);
+    return { picks: gwPicks, results: resR.data || [] };
+  });
+  const gwData = await Promise.all(gwFetches);
+
+  let allPicks = [];
+  const resMap = {};
+  gwData.forEach(({ picks, results }) => {
+    allPicks = allPicks.concat(picks);
+    results.forEach(r => {
+      if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
+      resMap[r.fixture_id][r.element_id] = r;
+    });
+  });
+
+  if (!allPicks.length) {
     content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No season data yet</h3><p>Season standings appear after picks are submitted</p></div>';
     return;
   }
-
-  // Get ALL results for all fixtures with picks
-  const allFixtureIds = [...new Set(allPicks.map(p => p.fixture_id))];
-  // Fetch in batches of 200 to avoid URL length limits
-  let allResults = [];
-  for (let i = 0; i < allFixtureIds.length; i += 200) {
-    const batch = allFixtureIds.slice(i, i + 200);
-    const { data } = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', batch);
-    if (data) allResults = allResults.concat(data);
-  }
-
-  // Build results lookup
-  const resMap = {};
-  allResults.forEach(r => {
-    if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
-    resMap[r.fixture_id][r.element_id] = r;
-  });
 
   // Aggregate per user: total GOATs, total BPS, GWs played
   const userTotals = {};
@@ -1797,28 +1804,41 @@ async function openManagerProfile(uid) {
   // Fetch avatar from auth metadata if it's the current user
   let avatarUrl = profile.avatar_url || null;
 
-  // Fetch ALL picks for this user
-  const { data: allPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').eq('user_id', uid).gte('gw', FIRST_GW);
-  if (!allPicks || !allPicks.length) {
+  // Step 1: Fetch ALL data per GW in parallel (avoids Supabase 1000-row limit)
+  const allGWNumbers = [];
+  for (let g = FIRST_GW; g <= (maxGW || 38); g++) allGWNumbers.push(g);
+  const gwFetches = allGWNumbers.map(async gw => {
+    const [picksR, fixtR] = await Promise.all([
+      sb.from('picks').select('user_id,gw,fixture_id,element_id').eq('gw', gw),
+      sb.from('fixtures').select('id').eq('gw', gw)
+    ]);
+    const gwPicks = picksR.data || [];
+    if (!gwPicks.length) return { gw, picks: [], results: [] };
+    const gwFIds = (fixtR.data || []).map(f => f.id);
+    const resR = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', gwFIds);
+    return { gw, picks: gwPicks, results: resR.data || [] };
+  });
+  const gwData = await Promise.all(gwFetches);
+
+  // Step 2: Build complete resMap from ALL GW data
+  const resMap = {};
+  let allSeasonPicks = [];
+  gwData.forEach(({ picks, results }) => {
+    allSeasonPicks = allSeasonPicks.concat(picks);
+    results.forEach(r => {
+      if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
+      resMap[r.fixture_id][r.element_id] = r;
+    });
+  });
+
+  // Step 3: Filter this user's picks
+  const allPicks = allSeasonPicks.filter(p => p.user_id === uid);
+  if (!allPicks.length) {
     content.innerHTML = buildManagerHeader(profile, avatarUrl, null) + '<div class="empty-state" style="padding:40px 0"><h3>No picks yet</h3></div>';
     return;
   }
 
-  // Fetch results for all fixtures this user picked
-  const fIds = [...new Set(allPicks.map(p => p.fixture_id))];
-  let allResults = [];
-  for (let i = 0; i < fIds.length; i += 200) {
-    const batch = fIds.slice(i, i + 200);
-    const { data } = await sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', batch);
-    if (data) allResults = allResults.concat(data);
-  }
-  const resMap = {};
-  allResults.forEach(r => {
-    if (!resMap[r.fixture_id]) resMap[r.fixture_id] = {};
-    resMap[r.fixture_id][r.element_id] = r;
-  });
-
-  // Compute per-GW stats
+  // Step 4: Compute per-GW stats for this user (using complete resMap)
   const gwStats = {};
   const playerPickCount = {};
   let totalGoats = 0, totalBps = 0, totalPicks = 0;
@@ -1832,7 +1852,6 @@ async function openManagerProfile(uid) {
     if (isGoat) { gwStats[pick.gw].goats++; totalGoats++; }
     totalBps += bps;
     totalPicks++;
-    // Track favourite players
     if (!playerPickCount[pick.element_id]) playerPickCount[pick.element_id] = 0;
     playerPickCount[pick.element_id]++;
   });
@@ -1846,28 +1865,21 @@ async function openManagerProfile(uid) {
   const bestGW = gwArr[0];
   const worstGW = gwArr[gwArr.length - 1];
 
-  // Streaks (consecutive GWs with at least 1 GOAT)
+  // Streaks
   const sortedGWs = gwArr.map(g => g.gw).sort((a, b) => a - b);
   let currentStreak = 0, bestStreak = 0, runningStreak = 0;
   for (const gw of sortedGWs) {
-    if (gwStats[gw].goats > 0) {
-      runningStreak++;
-      if (runningStreak > bestStreak) bestStreak = runningStreak;
-    } else {
-      runningStreak = 0;
-    }
+    if (gwStats[gw].goats > 0) { runningStreak++; if (runningStreak > bestStreak) bestStreak = runningStreak; }
+    else runningStreak = 0;
   }
-  // Current streak = from the last GW backwards
   currentStreak = 0;
   for (let i = sortedGWs.length - 1; i >= 0; i--) {
     if (gwStats[sortedGWs[i]].goats > 0) currentStreak++;
     else break;
   }
 
-  // GOAT rate
   const goatRate = totalPicks > 0 ? (totalGoats / totalPicks * 100).toFixed(1) : '0';
 
-  // Favourite players (top 3)
   const favPlayers = Object.entries(playerPickCount)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
@@ -1876,11 +1888,10 @@ async function openManagerProfile(uid) {
       return { name: pl ? (pl.short_name || pl.name) : 'Unknown', team: pl ? pl.team_short : '', count };
     });
 
-  // Season rank + per-GW ranks — need all users' picks
-  const { data: allSeasonPicks } = await sb.from('picks').select('user_id,gw,fixture_id,element_id').gte('gw', FIRST_GW);
+  // Step 5: Season rank + per-GW ranks (using complete data)
   let seasonRank = '-';
-  const gwRanks = {}; // gw -> { rank, total }
-  if (allSeasonPicks) {
+  const gwRanks = {};
+  if (allSeasonPicks.length) {
     // Season totals
     const userTotals = {};
     // Per-GW totals for all users
