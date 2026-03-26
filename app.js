@@ -1350,17 +1350,27 @@ async function loadGWStandings(gw, content) {
 
   content.innerHTML = '<div class="loading-spinner">Loading standings...</div>';
 
-  // Get all picks for this GW
-  const { data: allPicks } = await sb.from('picks').select('*').eq('gw', gw);
+  // Parallel fetch: picks + fixtures
+  const [picksRes, fixturesRes] = await Promise.all([
+    sb.from('picks').select('user_id,gw,fixture_id,element_id').eq('gw', gw),
+    sb.from('fixtures').select('*').eq('gw', gw)
+  ]);
+  const allPicks = picksRes.data;
+  const gwFixtures = fixturesRes.data;
+
   if (!allPicks || !allPicks.length) {
     content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No standings yet</h3><p>Standings appear after picks are submitted</p></div>';
     return;
   }
 
-  // Get results for GW fixtures
-  const { data: gwFixtures } = await sb.from('fixtures').select('*').eq('gw', gw);
+  // Parallel fetch: results + profiles
   const fIds = (gwFixtures || []).map(f => f.id);
-  const { data: gwResults } = await sb.from('results').select('*').in('fixture_id', fIds);
+  const userIds = [...new Set(allPicks.map(p => p.user_id))];
+  const [resultsRes, profilesRes] = await Promise.all([
+    sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', fIds),
+    sb.from('profiles').select('*').in('id', userIds)
+  ]);
+  const gwResults = resultsRes.data;
 
   // Build results lookup
   const resMap = {};
@@ -1388,9 +1398,8 @@ async function loadGWStandings(gw, content) {
     userScores[pick.user_id].picks.push({ fixture_id: pick.fixture_id, element_id: pick.element_id, bps, isGoat, rank: pickRank });
   });
 
-  // Get profiles
-  const userIds = Object.keys(userScores);
-  const { data: profiles } = await sb.from('profiles').select('*').in('id', userIds);
+  // Use pre-fetched profiles
+  const profiles = profilesRes.data;
   const profileMap = {};
   (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
