@@ -2,3 +2,4 @@ node_modules/\n.env\n.env.local\n.DS_Store
 .vercel
 .env*.local
 test-results/
+*.env
