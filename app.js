@@ -153,6 +153,7 @@ function replayTour() {
 }
 
 function maybeStartTour() {
+  if (window.location.search.includes('notour')) return;
   var forcetour = window.location.search.includes('tour');
   if (!forcetour && localStorage.getItem('goat_tour_done') === 'true') return;
 
