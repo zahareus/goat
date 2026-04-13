@@ -26,31 +26,32 @@ export async function generateMagicLink() {
   return data.action_link;
 }
 
+const SUPABASE_ANON_KEY = 'sb_publishable_PU7gbL0MVSaVhI4WPodRxg_xA0-LG6e';
+
 export async function loginTestUser(page, targetUrl) {
-  // First, go to the site and set tour flag to prevent overlay
+  const session = await getSessionToken();
+  if (!session?.access_token) throw new Error('Failed to obtain session token');
+
   const urlObj = new URL(targetUrl || 'https://goatapp.club');
   urlObj.searchParams.set('notour', '1');
-  await page.goto(urlObj.toString());
+
+  await page.goto(urlObj.toString(), { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.setItem('goat_tour_done', 'true'));
 
-  // Now get a session via magic link API (without visiting the link in browser)
-  // Use the OTP approach: generate link, extract token, verify via API
-  const session = await getSessionToken();
-  if (session) {
-    // Inject Supabase session into localStorage
-    await page.evaluate((sess) => {
-      const storageKey = `sb-zanssnurnzdqwaxuadge-auth-token`;
-      localStorage.setItem(storageKey, JSON.stringify(sess));
-    }, session);
+  // Use Supabase client to set session — it writes localStorage in the exact format app expects
+  await page.evaluate(async ({ url, key, sess }) => {
+    const client = window.supabase.createClient(url, key);
+    await client.auth.setSession({
+      access_token: sess.access_token,
+      refresh_token: sess.refresh_token,
+    });
+  }, { url: SUPABASE_URL, key: SUPABASE_ANON_KEY, sess: session });
 
-    // Reload to pick up the session
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-  }
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2000);
 }
 
-async function getSessionToken() {
+export async function getSessionToken() {
   if (!SERVICE_KEY) return null;
 
   // Generate a magic link and extract the OTP

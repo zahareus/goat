@@ -5,8 +5,7 @@ const BASE_URL = process.env.BASE_URL || 'https://goatapp.club';
 const HAS_SERVICE_KEY = !!process.env.SUPABASE_SERVICE_KEY;
 
 test.describe('Authenticated Pick Flow - Full Integration', () => {
-  // TODO: fix session injection (magic link OTP verify approach)
-  test.skip(true, 'Auth session injection needs fixing — tour blocks magic link redirect');
+  test.skip(!HAS_SERVICE_KEY, 'SUPABASE_SERVICE_KEY not set — auth tests require service key');
   test.describe.configure({ mode: 'serial' });
 
   test.beforeAll(async () => {
@@ -27,16 +26,12 @@ test.describe('Authenticated Pick Flow - Full Integration', () => {
   test('login works and user sees authenticated UI', async ({ page }) => {
     await loginTestUser(page, BASE_URL);
 
-    // Menu should show user options (sign out, team name)
-    const menuBtn = page.locator('.burger, .nav-right button, #menu-btn').first();
-    if (await menuBtn.isVisible()) {
-      await menuBtn.click();
-      await page.waitForTimeout(500);
-    }
+    // Open the nav menu
+    await page.locator('.nav-menu-btn').click();
+    await page.waitForTimeout(300);
 
-    // Should see sign out option (proof of auth)
-    const signOut = page.locator('text=Sign Out, text=Log Out, [onclick*="SignOut"], [onclick*="signOut"]').first();
-    await expect(signOut).toBeVisible({ timeout: 5000 });
+    // Sign Out entry should be visible when authenticated
+    await expect(page.locator('#menu-signout')).toBeVisible({ timeout: 5000 });
   });
 
   test('profile is created in database after login', async ({ page }) => {
