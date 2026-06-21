@@ -1,0 +1,69 @@
+name: DB Backup (Supabase free)
+
+# Free Supabase has NO automatic backups. This job runs pg_dump daily and
+# uploads a gzipped logical dump (public + auth schemas) to CloudRV.
+# It also doubles as a keepalive (the pooler connection counts as DB activity).
+on:
+  schedule:
+    - cron: '30 2 * * *'   # daily 02:30 UTC (staggered after flop11)
+  workflow_dispatch: {}
+
+concurrency:
+  group: db-backup-goat
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROJECT: goat
+    steps:
+      - name: Install pg_dump 17
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: pg_dump + gzip
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d_%H%M%S)
+          FN="dbbackup_${PROJECT}_${STAMP}.sql.gz"
+          echo "FN=$FN" >> "$GITHUB_ENV"
+          pg_dump "$DB_URL" \
+            --schema=public --schema=auth \
+            --no-owner --no-privileges --clean --if-exists \
+            --quote-all-identifiers \
+            | gzip -9 > "$FN"
+          SIZE=$(stat -c%s "$FN")
+          echo "Dumped $FN ($SIZE bytes)"
+          ls -lh "$FN"
+          test "$SIZE" -gt 1024
+
+      - name: Upload to CloudRV
+        env:
+          CR_EMAIL: ${{ secrets.CLOUDREVE_EMAIL }}
+          CR_PASS: ${{ secrets.CLOUDREVE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BASE=https://files.ontext.info
+          TOKEN=$(curl -s -X POST "$BASE/api/v4/session/token" \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$CR_EMAIL\",\"password\":\"$CR_PASS\"}" \
+            | python3 -c "import json,sys;print(json.load(sys.stdin)['data']['token']['access_token'])")
+          SIZE=$(stat -c%s "$FN")
+          SID=$(curl -s -X PUT "$BASE/api/v4/file/upload" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"uri\":\"cloudreve://my/automation/$FN\",\"size\":$SIZE}" \
+            | python3 -c "import json,sys;print(json.load(sys.stdin)['data']['session_id'])")
+          curl -s -X POST "$BASE/api/v4/file/upload/$SID/0" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/octet-stream' \
+            --data-binary "@$FN" -o /dev/null -w 'upload HTTP %{http_code}\n'
+          echo "Uploaded $FN -> cloudreve://my/automation/"
