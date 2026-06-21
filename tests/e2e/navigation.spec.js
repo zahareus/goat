@@ -62,7 +62,9 @@ test.describe('GW Navigation & Historical Data', () => {
 
   test('My Team tab shows picks for historical GW', async ({ page }) => {
     await gotoWithoutTour(page, `${BASE_URL}#gw30`);
-    await page.waitForSelector('.tab', { timeout: 10000 });
+    // Wait for data render (not just .tab, which exists before boot finishes) —
+    // otherwise the app's late default-tab switch races our click and resets it.
+    await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
 
     const myTeamBtn = page.locator('#tab-btn-myteam');
     if (await myTeamBtn.isVisible()) {

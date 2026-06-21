@@ -6,6 +6,13 @@ test.describe('Pick UI - Player Selection (no auth)', () => {
   test('pick tab shows player cards with names and stats', async ({ page }) => {
     await gotoWithoutTour(page, BASE_URL);
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
+
+    // The pick tab only opens for an unlocked (open) gameweek. Off-season /
+    // past GWs are locked by design (switchTab('pick') is a no-op), so the
+    // cards stay hidden — skip rather than false-fail when no GW is pickable.
+    const locked = await page.evaluate(() => isViewGWPickLocked());
+    test.skip(locked, 'no open gameweek — pick tab locked');
+
     await page.evaluate(() => switchTab('pick'));
     await page.waitForTimeout(500);
 
@@ -18,9 +25,13 @@ test.describe('Pick UI - Player Selection (no auth)', () => {
   });
 
   test('clicking a player card selects it (gold border)', async ({ page }) => {
-    // Navigate to a GW with scheduled fixtures
-    await gotoWithoutTour(page, `${BASE_URL}#gw32`);
+    // Use the active GW (not a hardcoded past GW, which is always locked).
+    await gotoWithoutTour(page, BASE_URL);
     await page.waitForSelector('.phex-card', { state: 'attached', timeout: 15000 });
+
+    const locked = await page.evaluate(() => isViewGWPickLocked());
+    test.skip(locked, 'no open gameweek — picks not selectable');
+
     await page.evaluate(() => switchTab('pick'));
     await page.waitForTimeout(500);
 
