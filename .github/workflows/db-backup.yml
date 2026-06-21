@@ -26,7 +26,9 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          # The /usr/bin/pg_dump wrapper may resolve to the runner's older pg16,
+          # so always call the v17 binary explicitly.
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: pg_dump + gzip
         env:
@@ -36,7 +38,7 @@ jobs:
           STAMP=$(date -u +%Y%m%d_%H%M%S)
           FN="dbbackup_${PROJECT}_${STAMP}.sql.gz"
           echo "FN=$FN" >> "$GITHUB_ENV"
-          pg_dump "$DB_URL" \
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --schema=public --schema=auth \
             --no-owner --no-privileges --clean --if-exists \
             --quote-all-identifiers \
