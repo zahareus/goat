@@ -61,13 +61,15 @@ body{
   padding:12px 14px;font-size:14px;margin-bottom:14px;outline:none;
 }
 .auth-input:focus{border-color:var(--accent)}
-.auth-btn{
-  width:100%;background:var(--accent);color:#111;border:none;
-  padding:12px;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:1px;
-  cursor:pointer;
+/* Primary button — single source of truth (DESIGN.md §3) */
+.btn-primary,.auth-btn,.strip-submit,.profile-save,.admin-add-btn{
+  background:var(--accent);color:var(--ink);border:none;
+  padding:10px 20px;font-size:12px;font-weight:900;
+  text-transform:uppercase;letter-spacing:1px;cursor:pointer;
 }
-.auth-btn:hover{background:var(--gold-100)}
-.auth-btn:disabled{opacity:0.5;cursor:not-allowed}
+.btn-primary:hover,.auth-btn:hover,.strip-submit:hover,.profile-save:hover,.admin-add-btn:hover{background:var(--accent-hover)}
+.btn-primary:disabled,.auth-btn:disabled,.strip-submit:disabled,.profile-save:disabled,.admin-add-btn:disabled{opacity:0.5;cursor:not-allowed}
+.auth-btn{width:100%}
 .auth-msg{font-size:12px;color:#777;margin-top:14px;text-align:center;min-height:18px}
 .auth-msg.error{color:#ff4444}
 .auth-msg.success{color:#4CAF50}
@@ -302,12 +304,7 @@ tr.goat-row .td-bps{color:var(--accent);font-weight:900}
 .strip-slot.filled{background:var(--accent)}
 .strip-slot img{width:100%;height:120%;object-fit:cover;object-position:top}
 .strip-count{font-size:11px;color:var(--accent);font-weight:700;margin-left:2px;white-space:nowrap}
-.strip-submit{
-  margin-left:auto;background:var(--accent);color:#111;border:none;
-  padding:8px 18px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1px;cursor:pointer;flex-shrink:0;
-}
-.strip-submit:hover{background:var(--gold-100)}
-.strip-submit:disabled{opacity:0.5;cursor:not-allowed}
+.strip-submit{margin-left:auto;flex-shrink:0}
 .pick-spacer{height:60px}
 
 /* ===== LIVE TAB ===== */
@@ -522,11 +519,6 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 }
 .profile-input:focus{border-color:var(--accent)}
 .profile-input:disabled{opacity:0.5}
-.profile-save{
-  background:var(--accent);color:#111;border:none;padding:12px 24px;
-  font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;cursor:pointer;
-}
-.profile-save:hover{background:var(--gold-100)}
 .profile-msg{font-size:12px;color:#4CAF50;margin-top:10px;min-height:18px}
 
 /* Telegram section */
@@ -599,12 +591,6 @@ tr.lb-picks-row td{padding:6px 12px 8px}
   padding:12px 14px;font-size:13px;outline:none;appearance:auto;
 }
 .admin-select:focus{border-color:var(--accent)}
-.admin-add-btn{
-  background:var(--accent);color:#111;border:none;padding:12px;
-  font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:1px;cursor:pointer;
-}
-.admin-add-btn:hover{background:var(--gold-100)}
-.admin-add-btn:disabled{opacity:0.5;cursor:not-allowed}
 .admin-msg{font-size:12px;margin-top:8px;min-height:18px}
 .admin-msg.ok{color:#4CAF50}
 .admin-msg.err{color:#ff4444}

@@ -1252,9 +1252,9 @@ function renderMyTeam() {
 
   if (!Object.keys(userPicks).length) {
     if (!currentUser) {
-      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F512;</span><h3>Sign in to play</h3><p>Create an account to pick your GOATs and track your results</p><div style="margin-top:16px"><button onclick="showAuthModal()" style="background:#BFB294;color:#111;border:none;padding:10px 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Sign In</button></div></div>';
+      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F512;</span><h3>Sign in to play</h3><p>Create an account to pick your GOATs and track your results</p><div style="margin-top:16px"><button class="btn-primary" onclick="showAuthModal()">Sign In</button></div></div>';
     } else {
-      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet for GW' + viewGW + '</h3><p>Head to the Pick Team tab to choose your GOATs</p><div style="margin-top:16px"><button onclick="switchTab(\'pick\')" style="background:#BFB294;color:#111;border:none;padding:10px 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Pick Team</button></div></div>';
+      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet for GW' + viewGW + '</h3><p>Head to the Pick Team tab to choose your GOATs</p><div style="margin-top:16px"><button class="btn-primary" onclick="switchTab(\'pick\')">Pick Team</button></div></div>';
     }
     return;
   }
