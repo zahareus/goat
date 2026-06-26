@@ -1,4 +1,33 @@
+/* design-md: goat v1 / follows tokens 2026-06-26 */
+:root{
+  /* surfaces */
+  --ink-deep:#0d0d0d; --ink-1:#141414; --ink-base:#1a1a1a; --ink-2:#1e1e1e;
+  --ink-3:#242424; --border:#2a2a2a; --border-in:#333;
+  /* text */
+  --text-strong:#fff; --text-bright:#f0f0f0; --text-body:#ccc; --text-sub:#aaa;
+  --text-mute:#888; --text-dim:#666; --text-faint:#444;
+  /* champagne-gold ramp */
+  --gold-100:#d4c9a8; --gold-200:#BFB294; --gold-300:#a89570; --gold-400:#8a7050;
+  --gold-500:#7a6040; --gold-600:#6a5030; --gold-700:#4a3820; --gold-800:#3a2810;
+  --gold-900:#2a2216; --gold-bg:#1a1a12;
+  /* status */
+  --green:#4CAF50; --red:#ff4444; --warn-hi:#ffc107; --warn-lo:#f08c00;
+  --avail-in:#4a8c3f; --avail-out:#e25c3d;
+  /* position (muted earthy) */
+  --pos-gkp:#c9a227; --pos-def:#4a8fa0; --pos-mid:#7a9a4a; --pos-fwd:#c25c3d;
+  /* brand-locked */
+  --tg-blue:#2AABEE; --tg-blue-hover:#229ED9;
+  /* semantic aliases */
+  --accent:var(--gold-200); --accent-hover:var(--gold-100); --ink:var(--ink-base);
+  --success:var(--green); --danger:var(--red); --live:var(--red);
+}
 *{box-sizing:border-box;margin:0;padding:0}
+/* focus-visible — видимий фокус клавіатури на всіх інтерактивних (DESIGN.md §7) */
+:where(button,a,input,select,textarea,.tab,.pos-tab,.phex-card,.phex-name,
+  .lb-name-btn,.lb-name-link,.lv-card,.mt2-card,.nav-logo,
+  .nav-menu-btn,.nav-help-btn,.gw-nav-arrow,.match-selected-badge):focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;
+}
 body{
   background:#1a1a1a;
   background-image:url("data:image/svg+xml,%3Csvg width='28' height='32' viewBox='0 0 28 32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14 1 L27 8 L27 24 L14 31 L1 24 L1 8 Z' fill='none' stroke='%23222' stroke-width='1'/%3E%3C/svg%3E");
