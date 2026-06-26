@@ -8,7 +8,7 @@ const CDN = 'https://zanssnurnzdqwaxuadge.supabase.co/storage/v1/object/public/p
 const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 68 78' fill='none'%3E%3Crect width='68' height='78' fill='%23252525'/%3E%3Ccircle cx='34' cy='28' r='12' fill='%23444'/%3E%3Cellipse cx='34' cy='62' rx='18' ry='14' fill='%23444'/%3E%3C/svg%3E";
 const SEASON = '25-26';
 const PO = {GKP:1, DEF:2, MID:3, FWD:4};
-const POS_COLORS = {GKP:'#f5c518', DEF:'#00d5e0', MID:'#a0e000', FWD:'#ff6b35'};
+const POS_COLORS = {GKP:'#c9a227', DEF:'#4a8fa0', MID:'#7a9a4a', FWD:'#c25c3d'};
 const FPL_TEAM_MAP = {"1":"ARS","2":"AVL","3":"BUR","4":"BOU","5":"BRE","6":"BHA","7":"CHE","8":"CRY","9":"EVE","10":"FUL","11":"LEE","12":"LIV","13":"MCI","14":"MUN","15":"NEW","16":"NFO","17":"SUN","18":"TOT","19":"WHU","20":"WOL"};
 const ADMIN_EMAIL = 'zahareus@gmail.com';
 
