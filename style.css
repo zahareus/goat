@@ -644,10 +644,10 @@ tr.lb-picks-row td{padding:6px 12px 8px}
   font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;
   padding:4px 6px;cursor:pointer;border:none;color:#fff;
 }
-.mt2-save{background:#2e7d32}
-.mt2-save:hover{background:#388e3c}
-.mt2-cancel{background:#c62828}
-.mt2-cancel:hover{background:#d32f2f}
+.mt2-save{background:var(--success);color:#06210a}
+.mt2-save:hover{filter:brightness(1.12)}
+.mt2-cancel{background:var(--danger);color:#2a0606}
+.mt2-cancel:hover{filter:brightness(1.12)}
 .mt2-card.changing{border-color:#fff;box-shadow:0 0 12px rgba(191,178,148,0.3)}
 
 /* My Team change panel */
