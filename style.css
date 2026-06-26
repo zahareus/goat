@@ -24,7 +24,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 /* focus-visible — видимий фокус клавіатури на всіх інтерактивних (DESIGN.md §7) */
 :where(button,a,input,select,textarea,.tab,.pos-tab,.phex-card,.phex-name,
-  .lb-name-btn,.lb-name-link,.lv-card,.mt2-card,.nav-logo,
+  .link-name,.lv-card,.mt2-card,.nav-logo,
   .nav-menu-btn,.nav-help-btn,.gw-nav-arrow,.match-selected-badge):focus-visible{
   outline:2px solid var(--accent);outline-offset:2px;
 }
@@ -471,8 +471,6 @@ tr.goat-row .td-bps{color:#BFB294;font-weight:900}
 .lb-rank{font-weight:900;color:#BFB294;width:36px}
 .lb-name{font-weight:700;color:#ddd;font-size:14px}
 .lb-name.me{color:#BFB294}
-.lb-name-btn{cursor:pointer}
-.lb-name-btn:hover{color:#BFB294;text-decoration:underline;text-decoration-color:#BFB29466}
 .lb-motms{color:#BFB294;font-weight:700;text-align:center;width:56px}
 .lb-pts{color:#fff;font-weight:700;text-align:right;width:56px}
 tr.my-row{background:#1a1a12}
@@ -580,8 +578,8 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .mp-gw-table th{background:#111;color:#777;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;border-bottom:1px solid #2a2a2a;text-align:left}
 .mp-gw-table td{padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#ccc}
 .mp-gw-table tr.mp-highlight td{background:#1a1800}
-.lb-name-link{color:inherit;cursor:pointer;text-decoration:none}
-.lb-name-link:hover{color:#BFB294;text-decoration:underline}
+.link-name{color:inherit;cursor:pointer;text-decoration:none}
+.link-name:hover{color:var(--accent);text-decoration:underline}
 .lb-expand-btn{cursor:pointer;color:#555;font-size:9px;margin-left:4px}
 .lb-expand-btn:hover{color:#BFB294}
 

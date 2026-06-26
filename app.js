@@ -1447,14 +1447,14 @@ async function loadGWStandings(gw, content) {
     const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="link-name" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-link" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'me\')">\u25BC</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="link-name" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'me\')">\u25BC</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
@@ -1563,13 +1563,13 @@ async function loadSeasonStandings(content) {
     const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="link-name" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="lb-name-link" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="link-name" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
   }
 
   html += '</tbody></table>';
