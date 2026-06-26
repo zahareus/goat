@@ -1444,10 +1444,10 @@ async function loadGWStandings(gw, content) {
     const s = sorted[i];
     const rank = s.rank;
     const isMe = s.uid === (currentUser ? currentUser.id : null);
-    const rankCls = rank <= 3 ? ' top3' : '';
+    const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
@@ -1560,10 +1560,10 @@ async function loadSeasonStandings(content) {
     const s = sorted[i];
     const rank = s.rank;
     const isMe = s.uid === (currentUser ? currentUser.id : null);
-    const rankCls = rank <= 3 ? ' top3' : '';
+    const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank' + rankCls + '">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="lb-name-link" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
   }
 
   if (myIdx >= 20) {
