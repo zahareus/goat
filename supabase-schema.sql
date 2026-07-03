@@ -137,6 +137,15 @@ CREATE POLICY "Users manage own profile" ON profiles FOR ALL
 
 -- n8n service role bypasses RLS (uses service_role key)
 
+-- Security hardening (2026-07-03): "Public read profiles" exposes rows, not
+-- columns. anon had table-level SELECT → telegram_chat_id / verify_* leaked via
+-- ?select=*. Column REVOKE alone is a no-op against a table-level GRANT, so:
+--   REVOKE SELECT ON profiles FROM anon;
+--   GRANT  SELECT (id, team_name, avatar_url, is_bot, bot_active,
+--                  bot_strategy, hours_before, created_at, updated_at)
+--          ON profiles TO anon;
+-- authenticated keeps full SELECT (own-profile settings read telegram_chat_id).
+
 -- ================================================
 -- HELPER FUNCTION: auto-create profile on sign-up
 -- ================================================
