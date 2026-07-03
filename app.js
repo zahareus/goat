@@ -1369,7 +1369,7 @@ async function loadGWStandings(gw, content) {
   const userIds = [...new Set(allPicks.map(p => p.user_id))];
   const [resultsRes, profilesRes] = await Promise.all([
     sb.from('results').select('fixture_id,element_id,bps,is_goat').in('fixture_id', fIds),
-    sb.from('profiles').select('*').in('id', userIds)
+    sb.from('profiles').select('id, team_name, avatar_url, is_bot').in('id', userIds)
   ]);
   const gwResults = resultsRes.data;
 
@@ -1517,7 +1517,7 @@ async function loadSeasonStandings(content) {
 
   // Get profiles
   const userIds = Object.keys(userTotals);
-  const { data: profiles } = await sb.from('profiles').select('*').in('id', userIds);
+  const { data: profiles } = await sb.from('profiles').select('id, team_name, avatar_url, is_bot').in('id', userIds);
   const profileMap = {};
   (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
@@ -1799,7 +1799,7 @@ async function openManagerProfile(uid) {
   content.innerHTML = '<div class="loading-spinner">Loading profile...</div>';
 
   // Fetch profile
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', uid).single();
+  const { data: profile } = await sb.from('profiles').select('id, team_name, avatar_url, is_bot').eq('id', uid).single();
   if (!profile) { content.innerHTML = '<div class="empty-state"><h3>Manager not found</h3></div>'; return; }
 
   // Fetch avatar from auth metadata if it's the current user
