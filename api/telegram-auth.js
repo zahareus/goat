@@ -11,7 +11,8 @@ module.exports = async function handler(req, res) {
   }
 
   const initData = req.body?.initData;
-  const validated = validateInitData(initData, process.env.TELEGRAM_BOT_TOKEN);
+  // trim: the Vercel env value carries a trailing newline; URLs strip it, HMAC doesn't
+  const validated = validateInitData(initData, (process.env.TELEGRAM_BOT_TOKEN || '').trim());
 
   if (!validated.ok) {
     return res.status(401).json({ error: 'invalid_init_data', reason: validated.reason });
