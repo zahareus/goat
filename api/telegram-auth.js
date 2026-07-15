@@ -5,14 +5,18 @@ const { validateInitData } = require('../lib/telegram-initdata.js');
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 
+// env values in this project carry trailing newlines; URLs strip them, HMAC and headers don't
+function env(name) {
+  return (process.env[name] || '').trim();
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const initData = req.body?.initData;
-  // trim: the Vercel env value carries a trailing newline; URLs strip it, HMAC doesn't
-  const validated = validateInitData(initData, (process.env.TELEGRAM_BOT_TOKEN || '').trim());
+  const validated = validateInitData(initData, env('TELEGRAM_BOT_TOKEN'));
 
   if (!validated.ok) {
     return res.status(401).json({ error: 'invalid_init_data', reason: validated.reason });
@@ -43,8 +47,8 @@ module.exports = async function handler(req, res) {
 
 function sbHeaders() {
   return {
-    'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY,
-    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'apikey': env('SUPABASE_SERVICE_ROLE_KEY'),
+    'Authorization': `Bearer ${env('SUPABASE_SERVICE_ROLE_KEY')}`,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation',
   };
@@ -299,7 +303,7 @@ async function sendVerificationEmail(email, code) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'Authorization': `Bearer ${env('RESEND_API_KEY')}`,
     },
     body: JSON.stringify({
       from: 'GOAT Fantasy <noreply@goatapp.club>',
