@@ -2295,6 +2295,11 @@ setInterval(function() {
 
 // ===== INIT =====
 async function boot() {
+  // Non-Telegram browsers get a landing only; ?webapp=1 is the escape hatch for e2e tests
+  if (!TMA && !new URLSearchParams(window.location.search).has('webapp')) {
+    document.getElementById('web-landing').style.display = 'flex';
+    return;
+  }
   if (TMA) {
     const tg = window.Telegram.WebApp;
     tg.ready();

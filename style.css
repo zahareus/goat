@@ -114,6 +114,24 @@ body{
 }
 .nav-menu-btn:hover{color:var(--text-strong)}
 .nav-menu-avatar{width:16px;height:16px;border-radius:50%;object-fit:cover}
+
+/* ===== WEB LANDING (non-Telegram browsers) ===== */
+#web-landing{
+  position:fixed;inset:0;z-index:1000;background:var(--ink-deep);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;text-align:center;padding:24px;
+}
+.landing-logo{width:96px;height:96px}
+.landing-title{font-size:32px;font-weight:900;letter-spacing:6px;color:var(--gold-200)}
+.landing-tag{color:var(--text-sub);font-size:15px;line-height:1.6}
+.landing-cta{
+  margin-top:14px;padding:14px 36px;border-radius:8px;text-decoration:none;
+  background:var(--tg-blue);color:#fff;font-weight:800;font-size:16px;
+  text-transform:uppercase;letter-spacing:1px;
+}
+.landing-cta:hover{background:var(--tg-blue-hover)}
+.landing-legal{position:absolute;bottom:20px;font-size:12px;color:var(--text-dim)}
+.landing-legal a{color:var(--text-dim)}
 .nav-dropdown{
   display:none;position:absolute;top:44px;right:0;
   background:var(--ink-1);border:1px solid var(--border);min-width:180px;z-index:300;

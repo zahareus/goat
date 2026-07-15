@@ -8,6 +8,7 @@ export async function gotoWithoutTour(page, url) {
   // Add ?notour to the URL to skip Driver.js tour
   const urlObj = new URL(url);
   urlObj.searchParams.set('notour', '1');
+  urlObj.searchParams.set('webapp', '1');
   await page.goto(urlObj.toString());
   await page.waitForLoadState('domcontentloaded');
 }

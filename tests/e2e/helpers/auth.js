@@ -34,6 +34,7 @@ export async function loginTestUser(page, targetUrl) {
 
   const urlObj = new URL(targetUrl || 'https://goatapp.club');
   urlObj.searchParams.set('notour', '1');
+  urlObj.searchParams.set('webapp', '1');
 
   await page.goto(urlObj.toString(), { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.setItem('goat_tour_done', 'true'));
