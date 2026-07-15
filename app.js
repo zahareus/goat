@@ -304,10 +304,19 @@ async function tmaVerify(tokenHash) {
   return true;
 }
 
+// Telegram forbids bots from messaging users who never started the bot chat —
+// without this, Mini-App-only players silently miss deadline/result notifications
+function tmaRequestWriteAccess() {
+  const tw = window.Telegram.WebApp;
+  const tgU = tw.initDataUnsafe && tw.initDataUnsafe.user;
+  if (tgU && tgU.allows_write_to_pm) return;
+  if (tw.requestWriteAccess) tw.requestWriteAccess(function() {});
+}
+
 async function tmaChooseNew() {
   const data = await tmaPost({ action: 'create' });
   if (data && data.status === 'ok' && data.token_hash) {
-    await tmaVerify(data.token_hash);
+    if (await tmaVerify(data.token_hash)) tmaRequestWriteAccess();
   } else {
     showToast('Login failed');
   }
@@ -343,7 +352,7 @@ async function tmaSubmitCode() {
   const data = await tmaPost({ action: 'code', code: code });
   if (!data) return;
   if (data.status === 'ok' && data.token_hash) {
-    await tmaVerify(data.token_hash);
+    if (await tmaVerify(data.token_hash)) tmaRequestWriteAccess();
   } else if (data.status === 'bad_code') {
     tmaSetStatus('Bad code. ' + data.attempts_left + ' attempts left', 'error');
   } else if (data.status === 'expired_code') {
@@ -2239,6 +2248,15 @@ function closeMenu() {
 
 async function shareApp() {
   closeMenu();
+  if (TMA) {
+    // share the Mini App link so invitees land in Telegram, not the mobile web
+    const text = 'Join me on GOAT — pick the best player for every Premier League match!';
+    window.Telegram.WebApp.openTelegramLink(
+      'https://t.me/share/url?url=' + encodeURIComponent('https://t.me/goatsoccergame_bot/goat')
+      + '&text=' + encodeURIComponent(text)
+    );
+    return;
+  }
   const shareData = {
     title: 'GOAT — Pick the Greatest',
     text: 'Pick the best player for every Premier League match. No budget, no transfers — just pure prediction skill.',
