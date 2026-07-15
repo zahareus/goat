@@ -18,6 +18,7 @@
 <link rel="icon" href="favicon.ico" type="image/x-icon">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://zanssnurnzdqwaxuadge.supabase.co" crossorigin>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
@@ -199,15 +200,17 @@
     <div class="page-title">Profile</div>
   </div>
   <div class="profile-form">
-    <label class="profile-label">Email</label>
-    <input type="email" class="profile-input" id="profile-email" disabled>
+    <div id="profile-email-row">
+      <label class="profile-label">Email</label>
+      <input type="email" class="profile-input" id="profile-email" disabled>
+    </div>
     <label class="profile-label">Team Name</label>
     <input type="text" class="profile-input" id="profile-team-name" maxlength="30" placeholder="My Team">
     <button class="profile-save" onclick="saveProfile()">Save</button>
     <div class="profile-msg" id="profile-msg"></div>
 
     <!-- Telegram Notifications -->
-    <div class="tg-section">
+    <div id="profile-telegram-section" class="tg-section">
       <div class="tg-section-title">Telegram Notifications</div>
       <div id="tg-not-linked">
         <div class="tg-desc">Get alerts about deadlines, lineups &amp; results.</div>
@@ -223,6 +226,36 @@
         </div>
         <button class="tg-disconnect" onclick="disconnectTelegram()">Disconnect</button>
       </div>
+    </div>
+    <div id="profile-tma-connected" class="tg-section" style="display:none">
+      <div class="tg-connected">
+        <span class="tg-dot"></span>
+        <span class="tg-connected-text">Connected via Telegram &#x2713;</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TMA WELCOME -->
+<div id="tma-welcome" class="auth-modal">
+  <div class="auth-modal-panel">
+    <img src="assets/logo.png" class="auth-logo" alt="GOAT">
+    <div class="auth-box">
+      <h2>Welcome to GOAT</h2>
+      <div id="tma-choice">
+        <button id="tma-btn-new" class="auth-btn" onclick="tmaChooseNew()">I'm new here</button>
+        <div class="auth-divider"><span>or</span></div>
+        <button id="tma-btn-link" class="auth-btn" onclick="tmaShowLink()">I have a GOAT account</button>
+      </div>
+      <div id="tma-email-step" style="display:none">
+        <input type="email" id="tma-email" class="auth-input" placeholder="your@email.com" autocomplete="email">
+        <button class="auth-btn" onclick="tmaSubmitEmail()">Submit</button>
+      </div>
+      <div id="tma-code-step" style="display:none">
+        <input type="text" id="tma-code" class="auth-input" placeholder="6-digit code" inputmode="numeric" maxlength="6">
+        <button class="auth-btn" onclick="tmaSubmitCode()">Submit</button>
+      </div>
+      <div id="tma-link-status" class="auth-msg"></div>
     </div>
   </div>
 </div>

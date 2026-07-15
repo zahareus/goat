@@ -3,6 +3,7 @@ const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_PU7gbL0MVSaVhI4WPodRxg_xA0-LG6e';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const TMA = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
 
 const CDN = 'https://zanssnurnzdqwaxuadge.supabase.co/storage/v1/object/public/player-photos/';
 const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 68 78' fill='none'%3E%3Crect width='68' height='78' fill='%23252525'/%3E%3Ccircle cx='34' cy='28' r='12' fill='%23444'/%3E%3Cellipse cx='34' cy='62' rx='18' ry='14' fill='%23444'/%3E%3C/svg%3E";
@@ -32,6 +33,7 @@ let statsMaxRound = 0;  // highest GW round in player_history
 let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 let standingsMode = 'gw'; // 'gw' or 'season'
+let tmaOverlayCloser = null;
 
 function isAdmin() { return currentUser && currentUser.email === ADMIN_EMAIL; }
 function botLabel(profile) { return (isAdmin() && profile && profile.is_bot) ? ' \uD83E\uDD16' : ''; }
@@ -216,6 +218,141 @@ async function initAuth() {
   loadAppData().then(function() { maybeStartTour(); });
 }
 
+async function initTmaAuth() {
+  const tg = window.Telegram.WebApp;
+  const tgUser = tg.initDataUnsafe && tg.initDataUnsafe.user;
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && tgUser && session.user.user_metadata && String(session.user.user_metadata.telegram_id) === String(tgUser.id)) {
+    return;
+  }
+  if (session) {
+    await sb.auth.signOut();
+  }
+
+  let resp;
+  try {
+    resp = await fetch('/api/telegram-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData })
+    });
+  } catch(e) {
+    showToast('Login failed');
+    return;
+  }
+
+  let data = {};
+  try { data = await resp.json(); } catch(e) {}
+
+  if (resp.status === 401) {
+    showToast(data.reason === 'expired' ? 'Session expired — please reopen the app' : 'Login failed');
+    return;
+  }
+  if (!resp.ok) {
+    showToast('Login failed');
+    return;
+  }
+  if (data.status === 'unknown') {
+    document.getElementById('tma-welcome').classList.add('open');
+    return;
+  }
+  if (data.status === 'ok' && data.token_hash) {
+    const { error } = await sb.auth.verifyOtp({ type: 'email', token_hash: data.token_hash });
+    if (error) showToast('Login failed');
+  }
+}
+
+async function tmaPost(body) {
+  if (!TMA) return null;
+  let resp;
+  try {
+    resp = await fetch('/api/telegram-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ initData: window.Telegram.WebApp.initData }, body || {}))
+    });
+  } catch(e) {
+    showToast('Login failed');
+    return null;
+  }
+  if (resp.status === 401) {
+    let data = {};
+    try { data = await resp.json(); } catch(e) {}
+    showToast(data.reason === 'expired' ? 'Session expired — please reopen the app' : 'Login failed');
+    return null;
+  }
+  if (!resp.ok) {
+    showToast('Login failed');
+    return null;
+  }
+  try { return await resp.json(); } catch(e) { return null; }
+}
+
+function tmaSetStatus(msg, type) {
+  const el = document.getElementById('tma-link-status');
+  el.textContent = msg || '';
+  el.className = type ? 'auth-msg ' + type : 'auth-msg';
+}
+
+async function tmaVerify(tokenHash) {
+  const { error } = await sb.auth.verifyOtp({ type: 'email', token_hash: tokenHash });
+  if (error) {
+    showToast('Login failed');
+    return false;
+  }
+  document.getElementById('tma-welcome').classList.remove('open');
+  return true;
+}
+
+async function tmaChooseNew() {
+  const data = await tmaPost({ action: 'create' });
+  if (data && data.status === 'ok' && data.token_hash) {
+    await tmaVerify(data.token_hash);
+  } else {
+    showToast('Login failed');
+  }
+}
+
+function tmaShowLink() {
+  document.getElementById('tma-choice').style.display = 'none';
+  document.getElementById('tma-email-step').style.display = '';
+  tmaSetStatus('', '');
+}
+
+async function tmaSubmitEmail() {
+  const email = document.getElementById('tma-email').value.trim();
+  if (!email) { tmaSetStatus('Enter your email', 'error'); return; }
+  tmaSetStatus('Sending...', '');
+  const data = await tmaPost({ action: 'link', email: email });
+  if (!data) return;
+  if (data.status === 'code_sent') {
+    document.getElementById('tma-code-step').style.display = '';
+    tmaSetStatus('Code sent, check your inbox', 'success');
+  } else if (data.status === 'no_account') {
+    tmaSetStatus('No account with this email', 'error');
+  } else if (data.status === 'wait') {
+    tmaSetStatus('Code already sent, check your inbox', '');
+  } else {
+    showToast('Login failed');
+  }
+}
+
+async function tmaSubmitCode() {
+  const code = document.getElementById('tma-code').value.trim();
+  if (!code) { tmaSetStatus('Enter the code', 'error'); return; }
+  const data = await tmaPost({ action: 'code', code: code });
+  if (!data) return;
+  if (data.status === 'ok' && data.token_hash) {
+    await tmaVerify(data.token_hash);
+  } else if (data.status === 'bad_code') {
+    tmaSetStatus('Bad code. ' + data.attempts_left + ' attempts left', 'error');
+  } else if (data.status === 'expired_code') {
+    tmaSetStatus('Code expired, request a new one', 'error');
+  } else {
+    showToast('Login failed');
+  }
+}
+
 async function handleGoogleAuth() {
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
@@ -255,6 +392,7 @@ async function handleSignOut() {
 }
 
 function showAuthModal() {
+  if (TMA) return;
   document.getElementById('auth-msg').textContent = '';
   document.getElementById('auth-email').value = '';
   document.getElementById('auth-modal').classList.add('open');
@@ -304,6 +442,10 @@ function updateMenuState() {
   document.getElementById('menu-signout').style.display = isAuth ? '' : 'none';
   document.getElementById('menu-signin').style.display = isAuth ? 'none' : '';
   document.getElementById('menu-admin').style.display = isAdmin() ? '' : 'none';
+  if (TMA) {
+    document.getElementById('menu-signin').style.display = 'none';
+    document.getElementById('menu-signout').style.display = 'none';
+  }
 }
 
 // ===== GW NAVIGATION =====
@@ -1626,6 +1768,11 @@ async function loadProfileData() {
     const hasT = !!data.telegram_chat_id;
     document.getElementById('tg-linked').style.display = hasT ? '' : 'none';
     document.getElementById('tg-not-linked').style.display = hasT ? 'none' : '';
+    if (TMA) {
+      document.getElementById('profile-telegram-section').style.display = 'none';
+      document.getElementById('profile-tma-connected').style.display = '';
+      document.getElementById('profile-email-row').style.display = (currentUser.email || '').endsWith('@telegram.goatapp.club') ? 'none' : '';
+    }
   }
 }
 
@@ -1664,6 +1811,10 @@ async function openProfile(elementId, code, name, team, pos, ph) {
   const overlay = document.getElementById('mb-profile-overlay');
   const content = document.getElementById('mb-profile-content');
   overlay.style.display = 'flex';
+  if (TMA && window.Telegram.WebApp.BackButton) {
+    tmaOverlayCloser = closeProfile;
+    window.Telegram.WebApp.BackButton.show();
+  }
   content.innerHTML = buildProfileHeader(name, team, pos, ph) + '<div class="mb-loading">Loading match history...</div>';
 
   try {
@@ -1698,7 +1849,13 @@ async function openProfile(elementId, code, name, team, pos, ph) {
   }
 }
 
-function closeProfile() { document.getElementById('mb-profile-overlay').style.display = 'none'; }
+function closeProfile() {
+  document.getElementById('mb-profile-overlay').style.display = 'none';
+  if (TMA && window.Telegram.WebApp.BackButton) {
+    tmaOverlayCloser = null;
+    window.Telegram.WebApp.BackButton.hide();
+  }
+}
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeProfile(); closeAuthModal(); } });
 
 function buildProfileHeader(name, team, pos, ph) {
@@ -2075,6 +2232,10 @@ document.addEventListener('click', function(e) {
 function openPage(name) {
   document.getElementById('page-' + name).classList.add('open');
   closeMenu();
+  if (TMA && window.Telegram.WebApp.BackButton) {
+    tmaOverlayCloser = function() { closePage(name); };
+    window.Telegram.WebApp.BackButton.show();
+  }
   if (name === 'admin') adminLoadBots();
 }
 
@@ -2151,6 +2312,10 @@ async function adminDeleteBot(id, name) {
 
 function closePage(name) {
   document.getElementById('page-' + name).classList.remove('open');
+  if (TMA && window.Telegram.WebApp.BackButton) {
+    tmaOverlayCloser = null;
+    window.Telegram.WebApp.BackButton.hide();
+  }
 }
 
 function showToast(msg) {
@@ -2188,4 +2353,27 @@ document.getElementById('auth-email').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') handleAuth();
 });
 
-initAuth();
+async function boot() {
+  if (TMA) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    if (tg.setHeaderColor) tg.setHeaderColor('#0d0d0d');
+    if (tg.setBackgroundColor) tg.setBackgroundColor('#1a1a1a');
+    if (tg.BackButton) {
+      tg.BackButton.onClick(function() {
+        if (tmaOverlayCloser) tmaOverlayCloser();
+      });
+    }
+    document.body.classList.add('tma');
+    try {
+      await initTmaAuth();
+    } catch(e) {
+      console.error('TMA auth failed');
+    }
+  }
+  initAuth();
+}
+
+boot();
