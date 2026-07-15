@@ -198,7 +198,6 @@ async function initAuth() {
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
-      closeAuthModal();
       // Save Google avatar URL to profile if available
       const meta = session.user.user_metadata;
       if (meta && meta.avatar_url) {
@@ -298,53 +297,14 @@ function tmaRequestWriteAccess() {
   if (tw.requestWriteAccess) tw.requestWriteAccess(function() {});
 }
 
-async function handleGoogleAuth() {
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin }
-  });
-  if (error) console.error('Google sign-in error:', error.message);
-}
-
-async function handleAuth() {
-  const email = document.getElementById('auth-email').value.trim();
-  const msg = document.getElementById('auth-msg');
-  const btn = document.getElementById('auth-submit');
-  if (!email) { msg.textContent = 'Enter your email'; msg.className = 'auth-msg error'; return; }
-
-  btn.disabled = true;
-  msg.textContent = 'Sending...';
-  msg.className = 'auth-msg';
-
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin }
-  });
-
-  btn.disabled = false;
-  if (error) {
-    msg.textContent = error.message;
-    msg.className = 'auth-msg error';
-  } else {
-    msg.textContent = 'Check your email for the magic link!';
-    msg.className = 'auth-msg success';
-  }
-}
-
 async function handleSignOut() {
   await sb.auth.signOut();
   closeMenu();
 }
 
-function showAuthModal() {
-  if (TMA) return;
-  document.getElementById('auth-msg').textContent = '';
-  document.getElementById('auth-email').value = '';
-  document.getElementById('auth-modal').classList.add('open');
-}
-
-function closeAuthModal() {
-  document.getElementById('auth-modal').classList.remove('open');
+// web login is gone — playing happens only inside the Telegram Mini App
+function promptTelegram() {
+  window.open('https://t.me/goatsoccergame_bot/goat', '_blank');
 }
 
 // ===== DATA LOADING =====
@@ -870,7 +830,7 @@ function getPlayersForFixture(f) {
 }
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
-  if (!currentUser) { showAuthModal(); return; }
+  if (!currentUser) { promptTelegram(); return; }
   if (viewGW < activeGW) { showToast('Cannot pick for past gameweeks'); return; }
   if (locked) { showToast('This match is locked'); return; }
 
@@ -1371,7 +1331,7 @@ function renderMyTeam() {
 
   if (!Object.keys(userPicks).length) {
     if (!currentUser) {
-      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F512;</span><h3>Sign in to play</h3><p>Create an account to pick your GOATs and track your results</p><div style="margin-top:16px"><button class="btn-primary" onclick="showAuthModal()">Sign In</button></div></div>';
+      strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F512;</span><h3>Play in Telegram</h3><p>Open GOAT in Telegram to pick your GOATs and track your results</p><div style="margin-top:16px"><button class="btn-primary" onclick="promptTelegram()">Open in Telegram</button></div></div>';
     } else {
       strip.innerHTML = '<div class="empty-state" style="min-width:100vw"><span class="emoji">&#x1F90C;</span><h3>No picks yet for GW' + viewGW + '</h3><p>Head to the Pick Team tab to choose your GOATs</p><div style="margin-top:16px"><button class="btn-primary" onclick="switchTab(\'pick\')">Pick Team</button></div></div>';
     }
@@ -1833,7 +1793,7 @@ function closeProfile() {
     window.Telegram.WebApp.BackButton.hide();
   }
 }
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeProfile(); closeAuthModal(); } });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeProfile(); } });
 
 function buildProfileHeader(name, team, pos, ph) {
   var col = POS_COLORS[pos] || '#BFB294';
@@ -2334,11 +2294,6 @@ setInterval(function() {
 }, 60000);
 
 // ===== INIT =====
-// Handle email input enter key
-document.getElementById('auth-email').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') handleAuth();
-});
-
 async function boot() {
   if (TMA) {
     const tg = window.Telegram.WebApp;
