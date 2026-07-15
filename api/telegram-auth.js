@@ -40,6 +40,8 @@ module.exports = async function handler(req, res) {
     console.error('Telegram auth error:', {
       telegram_user_id: tgUser?.id || null,
       message: err?.message || 'unexpected_error',
+      status: err?.status || null,
+      detail: err?.body?.message || err?.body?.msg || err?.body?.error || null,
     });
     return res.status(500).json({ error: 'server_error' });
   }
