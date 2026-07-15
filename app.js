@@ -253,12 +253,13 @@ async function initTmaAuth() {
     return;
   }
   if (data.status === 'unknown') {
-    document.getElementById('tma-welcome').classList.add('open');
-    return;
+    // Telegram-only auth: unknown Telegram user = new player, create silently
+    data = (await tmaPost({ action: 'create' })) || {};
   }
   if (data.status === 'ok' && data.token_hash) {
     const { error } = await sb.auth.verifyOtp({ type: 'email', token_hash: data.token_hash });
-    if (error) showToast('Login failed');
+    if (error) { showToast('Login failed'); return; }
+    if (data.is_new) tmaRequestWriteAccess();
   }
 }
 
@@ -288,22 +289,6 @@ async function tmaPost(body) {
   try { return await resp.json(); } catch(e) { return null; }
 }
 
-function tmaSetStatus(msg, type) {
-  const el = document.getElementById('tma-link-status');
-  el.textContent = msg || '';
-  el.className = type ? 'auth-msg ' + type : 'auth-msg';
-}
-
-async function tmaVerify(tokenHash) {
-  const { error } = await sb.auth.verifyOtp({ type: 'email', token_hash: tokenHash });
-  if (error) {
-    showToast('Login failed');
-    return false;
-  }
-  document.getElementById('tma-welcome').classList.remove('open');
-  return true;
-}
-
 // Telegram forbids bots from messaging users who never started the bot chat —
 // without this, Mini-App-only players silently miss deadline/result notifications
 function tmaRequestWriteAccess() {
@@ -311,55 +296,6 @@ function tmaRequestWriteAccess() {
   const tgU = tw.initDataUnsafe && tw.initDataUnsafe.user;
   if (tgU && tgU.allows_write_to_pm) return;
   if (tw.requestWriteAccess) tw.requestWriteAccess(function() {});
-}
-
-async function tmaChooseNew() {
-  const data = await tmaPost({ action: 'create' });
-  if (data && data.status === 'ok' && data.token_hash) {
-    if (await tmaVerify(data.token_hash)) tmaRequestWriteAccess();
-  } else {
-    showToast('Login failed');
-  }
-}
-
-function tmaShowLink() {
-  document.getElementById('tma-choice').style.display = 'none';
-  document.getElementById('tma-email-step').style.display = '';
-  tmaSetStatus('', '');
-}
-
-async function tmaSubmitEmail() {
-  const email = document.getElementById('tma-email').value.trim();
-  if (!email) { tmaSetStatus('Enter your email', 'error'); return; }
-  tmaSetStatus('Sending...', '');
-  const data = await tmaPost({ action: 'link', email: email });
-  if (!data) return;
-  if (data.status === 'code_sent') {
-    document.getElementById('tma-code-step').style.display = '';
-    tmaSetStatus('Code sent, check your inbox', 'success');
-  } else if (data.status === 'no_account') {
-    tmaSetStatus('No account with this email', 'error');
-  } else if (data.status === 'wait') {
-    tmaSetStatus('Code already sent, check your inbox', '');
-  } else {
-    showToast('Login failed');
-  }
-}
-
-async function tmaSubmitCode() {
-  const code = document.getElementById('tma-code').value.trim();
-  if (!code) { tmaSetStatus('Enter the code', 'error'); return; }
-  const data = await tmaPost({ action: 'code', code: code });
-  if (!data) return;
-  if (data.status === 'ok' && data.token_hash) {
-    if (await tmaVerify(data.token_hash)) tmaRequestWriteAccess();
-  } else if (data.status === 'bad_code') {
-    tmaSetStatus('Bad code. ' + data.attempts_left + ' attempts left', 'error');
-  } else if (data.status === 'expired_code') {
-    tmaSetStatus('Code expired, request a new one', 'error');
-  } else {
-    showToast('Login failed');
-  }
 }
 
 async function handleGoogleAuth() {
