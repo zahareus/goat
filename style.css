@@ -113,6 +113,7 @@ body{
   background:none;border:none;padding:6px 0;
 }
 .nav-menu-btn:hover{color:var(--text-strong)}
+.nav-menu-avatar{width:16px;height:16px;border-radius:50%;object-fit:cover}
 .nav-dropdown{
   display:none;position:absolute;top:44px;right:0;
   background:var(--ink-1);border:1px solid var(--border);min-width:180px;z-index:300;

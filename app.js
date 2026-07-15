@@ -446,6 +446,38 @@ function updateMenuState() {
     document.getElementById('menu-signin').style.display = 'none';
     document.getElementById('menu-signout').style.display = 'none';
   }
+  updateMenuAvatar();
+}
+
+async function updateMenuAvatar() {
+  const btn = document.querySelector('.nav-menu-btn');
+  if (!btn) return;
+  const svg = btn.querySelector('svg');
+  let img = btn.querySelector('.nav-menu-avatar');
+  if (!currentUser) {
+    if (img) img.remove();
+    if (svg) svg.style.display = '';
+    return;
+  }
+  const { data } = await sb.from('profiles').select('avatar_url').eq('id', currentUser.id).single();
+  let url = data && data.avatar_url;
+  if (!url && TMA) {
+    const tgU = window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user;
+    if (tgU && tgU.photo_url) {
+      url = tgU.photo_url;
+      sb.from('profiles').update({ avatar_url: url }).eq('id', currentUser.id).then(() => {});
+    }
+  }
+  if (!url) return;
+  if (!img) {
+    img = document.createElement('img');
+    img.className = 'nav-menu-avatar';
+    img.alt = '';
+    img.onerror = function() { img.remove(); if (svg) svg.style.display = ''; };
+    btn.insertBefore(img, btn.firstChild);
+  }
+  img.src = url;
+  if (svg) svg.style.display = 'none';
 }
 
 // ===== GW NAVIGATION =====
