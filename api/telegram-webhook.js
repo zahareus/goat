@@ -200,11 +200,16 @@ async function handleCode(chatId, code) {
   }
 
   // Success — link account
-  await sbUpdate('profiles', `id=eq.${profile.id}`, {
+  const updateResult = await sbUpdate('profiles', `id=eq.${profile.id}`, {
     telegram_chat_id: chatId,
     telegram_pending_chat_id: null, telegram_verify_code: null,
     telegram_verify_expires: null, telegram_verify_attempts: 0,
   });
+
+  if (!Array.isArray(updateResult)) {
+    await send(chatId, '⚠️ This Telegram account is already linked to another GOAT profile. Use /unlink there first.');
+    return;
+  }
 
   await send(chatId,
     '🎉 Account linked!\n\n'

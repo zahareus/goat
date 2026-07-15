@@ -306,6 +306,8 @@ tr.goat-row .td-bps{color:var(--accent);font-weight:900}
 .strip-count{font-size:11px;color:var(--accent);font-weight:700;margin-left:2px;white-space:nowrap}
 .strip-submit{margin-left:auto;flex-shrink:0}
 .pick-spacer{height:60px}
+body.tma .team-strip{padding-bottom:calc(8px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))}
+body.tma .pick-spacer{height:calc(60px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))}
 
 /* ===== LIVE TAB ===== */
 .live-nav{
