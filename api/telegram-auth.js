@@ -238,12 +238,13 @@ async function getAuthUser(id) {
 }
 
 // GoTrue /admin/users has no reliable email filter (supabase/auth#180) — an ignored
-// param would return the project's FIRST user. Probe via generate_link instead:
-// magiclink for a nonexistent user errors, for an existing one returns the user record.
+// param would return the project's FIRST user. Probe via recovery generate_link:
+// 404 for a nonexistent user, user record for an existing one. NOT magiclink —
+// magiclink generate_link auto-creates missing users (verified empirically).
 async function findUserByEmail(email) {
   const r = await sbAdminRaw('/auth/v1/admin/generate_link', {
     method: 'POST',
-    body: JSON.stringify({ type: 'magiclink', email }),
+    body: JSON.stringify({ type: 'recovery', email }),
   });
   if (!r.ok) return null;
   const user = r.json?.user || r.json;
@@ -253,8 +254,9 @@ async function findUserByEmail(email) {
 
 async function ensureTelegramMetadata(user, tgUser) {
   if (user?.user_metadata?.telegram_id) return;
+  // GoTrue admin user update is PUT; PATCH returns 405
   await sbAdmin(`/auth/v1/admin/users/${user.id}`, {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify({
       user_metadata: { ...(user.user_metadata || {}), telegram_id: tgUser.id },
     }),
