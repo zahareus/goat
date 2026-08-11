@@ -1710,7 +1710,62 @@ async function loadProfileData() {
       document.getElementById('profile-tma-connected').style.display = '';
       document.getElementById('profile-email-row').style.display = (currentUser.email || '').endsWith('@telegram.goatapp.club') ? 'none' : '';
     }
+    loadStarsSection(data);
   }
+}
+
+// ===== STAR PRIZES =====
+async function loadStarsSection(profile) {
+  document.getElementById('profile-stars-section').style.display = '';
+  const [ledgerRes, payoutRes] = await Promise.all([
+    sb.from('prize_ledger').select('gw,type,place,stars,created_at').order('created_at', { ascending: false }),
+    sb.from('payouts').select('stars,status').in('status', ['requested', 'processing']),
+  ]);
+  const ledger = ledgerRes.data || [];
+  const pending = payoutRes.data || [];
+  const pendingStars = pending.reduce((s, r) => s + r.stars, 0);
+  const balance = ledger.reduce((s, r) => s + r.stars, 0) - pendingStars;
+  window._starsBalance = balance;
+  window._starsUsername = profile.telegram_username || '';
+
+  document.getElementById('stars-balance').textContent = balance;
+  const pendEl = document.getElementById('stars-pending');
+  pendEl.style.display = pending.length ? '' : 'none';
+  if (pending.length) pendEl.textContent = 'Withdrawal in progress: ' + pendingStars + ' ⭐';
+
+  const btn = document.getElementById('stars-withdraw-btn');
+  const hint = document.getElementById('stars-hint');
+  btn.disabled = balance < 50 || pending.length > 0 || !profile.telegram_username;
+  if (pending.length) hint.textContent = 'Your request is waiting for approval.';
+  else if (balance < 50) hint.textContent = 'Win gameweek prizes — withdraw from 50 ⭐.';
+  else if (!profile.telegram_username) hint.textContent = 'Set a public @username in Telegram settings, then reopen the app.';
+  else hint.textContent = 'Stars are sent to your Telegram account @' + profile.telegram_username + '.';
+
+  document.getElementById('stars-history').innerHTML = ledger.slice(0, 10).map(r => {
+    const label = r.type === 'accrual' ? 'GW' + r.gw + ' · place ' + r.place
+      : r.type === 'withdrawal' ? 'Withdrawal' : 'Correction';
+    return '<div class="stars-row"><span>' + label + '</span><span>' + (r.stars > 0 ? '+' : '') + r.stars + ' ⭐</span></div>';
+  }).join('');
+}
+
+async function requestWithdraw() {
+  const bal = window._starsBalance || 0;
+  if (bal < 50) return;
+  if (!confirm('Withdraw ' + bal + ' ⭐ to @' + window._starsUsername + '?')) return;
+  const session = await sb.auth.getSession();
+  const token = session.data.session ? session.data.session.access_token : null;
+  if (!token) { showToast('Not authenticated'); return; }
+  const resp = await fetch('/api/payout-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ stars: bal }),
+  });
+  const data = await resp.json();
+  if (data.ok) showToast('Request sent — stars arrive after approval');
+  else if (data.error === 'already_active') showToast('You already have a pending request');
+  else if (data.error === 'no_username') showToast('Set a public @username in Telegram first');
+  else showToast('Request failed — try again later');
+  loadProfileData();
 }
 
 async function disconnectTelegram() {

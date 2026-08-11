@@ -730,3 +730,9 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .driver-popover .driver-popover-close-btn{color:var(--text-dim) !important}
 .driver-popover .driver-popover-close-btn:hover{color:var(--text-strong) !important}
 .driver-active-element{box-shadow:0 0 0 3px var(--accent) !important}
+
+/* ===== STAR PRIZES (profile) ===== */
+.stars-balance{font-size:28px;font-weight:900;color:var(--text-strong);margin-bottom:10px}
+.stars-pending{font-size:12px;color:#BFB294;margin-bottom:10px}
+.stars-hint{font-size:11px;color:#777;margin-top:8px}
+.stars-row{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border)}
