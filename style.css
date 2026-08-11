@@ -767,9 +767,9 @@ tr.lb-picks-row td{padding:6px 12px 8px}
 .req-actions{display:flex;gap:8px}
 .req-actions .bot-btn{flex:1;text-align:center}
 .req-actions .primary{background:var(--accent);color:var(--ink-1,#141414);border-color:var(--accent);font-weight:800}
-#withdraw-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:flex-end;justify-content:center}
+#withdraw-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center;padding:20px}
 #withdraw-overlay.open{display:flex}
-.wsheet{background:#1c1c1c;border-radius:18px 18px 0 0;padding:22px 20px 28px;width:100%;max-width:480px}
+.wsheet{background:#1c1c1c;border:1px solid var(--border);border-radius:18px;padding:22px 20px 24px;width:100%;max-width:420px}
 .wsheet h4{margin:0 0 6px;font-size:16px}
 .wsheet p{font-size:12.5px;color:#bbb;margin:8px 0}
 .wsheet-sum{font-size:26px;font-weight:900;color:var(--accent);margin:2px 0 4px}
