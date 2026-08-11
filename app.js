@@ -2237,7 +2237,7 @@ function openPage(name) {
     tmaOverlayCloser = function() { closePage(name); };
     window.Telegram.WebApp.BackButton.show();
   }
-  if (name === 'admin') adminLoadBots();
+  if (name === 'admin') { adminLoadBots(); adminLoadPrizes(); }
 }
 
 // ===== BOT ADMIN =====
@@ -2276,6 +2276,52 @@ async function adminLoadBots() {
     + '<button class="bot-btn del" onclick="adminDeleteBot(\'' + b.id + '\',\'' + esc(b.team_name) + '\')">Delete</button>'
     + '</div></div>'
   ).join('');
+}
+
+// ===== PRIZE ADMIN =====
+async function adminLoadPrizes() {
+  const sumEl = document.getElementById('admin-prizes-summary');
+  const queueEl = document.getElementById('admin-prizes-queue');
+  const balEl = document.getElementById('admin-prizes-balances');
+  sumEl.textContent = 'Loading…';
+  const res = await adminApiCall('prizes-summary');
+  if (!res || !res.summary) { sumEl.textContent = 'Failed to load prizes'; return; }
+  const s = res.summary;
+  sumEl.textContent = 'Season: +' + s.accrued + ' ⭐ accrued · ' + s.withdrawn + ' ⭐ withdrawn (~$' + s.usd_spent + ') · '
+    + s.on_balances + ' ⭐ on balances (bots hold ' + s.bot_stars + ')';
+
+  queueEl.innerHTML = res.queue.length ? res.queue.map(p =>
+    '<div class="bot-card"><div class="bot-info">'
+    + '<div class="bot-name">@' + esc(p.username_snapshot) + ' · ' + p.stars + ' ⭐</div>'
+    + '<div class="bot-meta"><span>' + esc(p.team_name) + '</span><span>' + p.status + '</span>'
+    + (p.invoice_url ? '<span><a href="' + p.invoice_url + '" target="_blank">invoice</a></span>' : '')
+    + '</div></div><div class="bot-actions">'
+    + (p.status === 'requested'
+      ? '<button class="bot-btn" onclick="adminConfirmPayout(\'' + p.id + '\',\'' + esc(p.username_snapshot) + '\',' + p.stars + ')">Confirm</button>'
+      : '')
+    + '<button class="bot-btn del" onclick="adminRejectPayout(\'' + p.id + '\')">Reject</button>'
+    + '</div></div>'
+  ).join('') : '<div class="stars-hint">No pending withdrawal requests</div>';
+
+  balEl.innerHTML = res.balances.map(b =>
+    '<div class="stars-row"><span>' + esc(b.team_name) + (b.is_bot ? ' 🤖' : '') + (b.username ? ' · @' + esc(b.username) : '') + '</span>'
+    + '<span>' + b.balance + ' ⭐</span></div>'
+  ).join('') || '<div class="stars-hint">No balances yet</div>';
+}
+
+async function adminConfirmPayout(id, username, stars) {
+  if (!confirm('Buy ' + stars + ' ⭐ for @' + username + '? An xRocket invoice will arrive in your Telegram.')) return;
+  const res = await adminApiCall('payout-confirm', { id });
+  if (res && res.ok) showToast('Invoice sent to your Telegram — pay it to finish');
+  else showToast('Confirm failed: ' + (res && res.error ? res.error : 'unknown'));
+  adminLoadPrizes();
+}
+
+async function adminRejectPayout(id) {
+  const reason = prompt('Reject reason (sent to the player):') || '';
+  const res = await adminApiCall('payout-reject', { id, reason });
+  if (res && res.ok) showToast('Rejected');
+  adminLoadPrizes();
 }
 
 async function adminCreateBot() {
