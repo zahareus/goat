@@ -90,14 +90,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function candidateGws() {
   const rows = await sbSelect('gw_config', 'finalized_at=is.null&select=gw&order=gw.asc');
   const out = [];
+  const stuck = [];
   for (const { gw } of rows) {
     const fixtures = await sbSelect('fixtures', `gw=eq.${gw}&select=id,status,kickoff_time`);
     if (!fixtures.length) continue;
-    if (!fixtures.every(f => f.status === 'ft' && f.kickoff_time)) continue;
-    const lastKickoff = Math.max(...fixtures.map(f => new Date(f.kickoff_time).getTime()));
+    const kickoffs = fixtures.filter(f => f.kickoff_time).map(f => new Date(f.kickoff_time).getTime());
+    if (!kickoffs.length) continue;
+    const firstKickoff = Math.min(...kickoffs);
+    const lastKickoff = Math.max(...kickoffs);
+    const allFt = fixtures.every(f => f.status === 'ft' && f.kickoff_time);
+    if (!allFt) {
+      // a GW that started >7 days ago but still isn't fully played = postponed
+      // match or dead sync; surface it instead of waiting silently
+      const startedDaysAgo = (Date.now() - firstKickoff) / 86400e3;
+      if (startedDaysAgo > 7 && startedDaysAgo < MAX_AGE_DAYS + 7) stuck.push(gw);
+      continue;
+    }
     const ageH = (Date.now() - lastKickoff) / 3600e3;
     if (ageH < KICKOFF_BUFFER_H || ageH > MAX_AGE_DAYS * 24) continue;
     out.push(gw);
+  }
+  // stateless once-a-day dedup: hourly cron, alert only on the 09:xx UTC run
+  if (stuck.length && new Date().getUTCHours() === 9) {
+    const adminChat = env('GOAT_ADMIN_CHAT_ID') || '292048';
+    await send(adminChat, `⚠️ GW${stuck.join(', GW')} не фіналізується понад 7 днів — перенесений матч або мертвий sync.`);
   }
   return out;
 }
