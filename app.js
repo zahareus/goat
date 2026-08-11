@@ -2323,7 +2323,7 @@ async function adminLoadPrizes() {
   const queueEl = document.getElementById('admin-prizes-queue');
   queueEl.innerHTML = '<div class="loading-spinner">Loading...</div>';
   const res = await adminApiCall('prizes-summary');
-  if (!res || !res.summary) { queueEl.innerHTML = '<div class="stars-hint">Failed to load — pull to retry</div>'; return; }
+  if (!res || !res.summary) { queueEl.innerHTML = '<div class="stars-hint" style="cursor:pointer" onclick="adminLoadPrizes()">Couldn&#39;t load prizes — tap to retry</div>'; return; }
 
   // Requests
   document.getElementById('prizes-req-count').textContent = res.queue.length ? '\u00B7 ' + res.queue.length : '';
