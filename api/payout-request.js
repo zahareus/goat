@@ -39,8 +39,27 @@ module.exports = async function handler(req, res) {
   try {
     const [profile] = await sbGet(`profiles?id=eq.${userId}&select=telegram_username,telegram_chat_id,is_bot`);
     if (!profile || profile.is_bot) return res.status(403).json({ error: 'forbidden' });
-    if (!profile.telegram_username) return res.status(400).json({ error: 'no_username' });
     if (!profile.telegram_chat_id) return res.status(400).json({ error: 'no_chat' });
+
+    // Live username via Bot API — profiles.telegram_username refreshes only on
+    // a server-side login, which cached TMA sessions skip entirely.
+    let username = null;
+    try {
+      const chat = await fetch(`${TELEGRAM_API}${env('TELEGRAM_BOT_TOKEN')}/getChat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: profile.telegram_chat_id }),
+      }).then(r => r.json());
+      username = chat.ok ? chat.result.username || null : null;
+    } catch (e) { /* fall through to no_username */ }
+    if (!username) return res.status(400).json({ error: 'no_username' });
+    if (username !== profile.telegram_username) {
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: sbHeaders({ Prefer: 'return=minimal' }),
+        body: JSON.stringify({ telegram_username: username }),
+      }).catch(() => {});
+    }
 
     const [ledger, active] = await Promise.all([
       sbGet(`prize_ledger?user_id=eq.${userId}&select=stars`),
@@ -58,7 +77,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         user_id: userId,
         stars,
-        username_snapshot: profile.telegram_username,
+        username_snapshot: username,
         telegram_chat_id: profile.telegram_chat_id,
       }),
     });
@@ -72,7 +91,7 @@ module.exports = async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: adminChat,
-        text: `💸 <b>Заявка на вивід</b>\n@${profile.telegram_username} просить <b>${stars} ⭐</b> (баланс ${balance})\nID: <code>${payout.id}</code>`,
+        text: `💸 <b>Заявка на вивід</b>\n@${username} просить <b>${stars} ⭐</b> (баланс ${balance})\nID: <code>${payout.id}</code>`,
         parse_mode: 'HTML',
       }),
     });

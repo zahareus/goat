@@ -1735,11 +1735,11 @@ async function loadStarsSection(profile) {
 
   const btn = document.getElementById('stars-withdraw-btn');
   const hint = document.getElementById('stars-hint');
-  btn.disabled = balance < 50 || pending.length > 0 || !profile.telegram_username;
+  // username is checked live server-side on request; don't gate on the cached copy
+  btn.disabled = balance < 50 || pending.length > 0;
   if (pending.length) hint.textContent = 'Your request is waiting for approval.';
   else if (balance < 50) hint.textContent = 'Win gameweek prizes — withdraw from 50 ⭐.';
-  else if (!profile.telegram_username) hint.textContent = 'Set a public @username in Telegram settings, then reopen the app.';
-  else hint.textContent = 'Stars are sent to your Telegram account @' + profile.telegram_username + '.';
+  else hint.textContent = 'Stars are sent to your public Telegram @username' + (profile.telegram_username ? ' (@' + profile.telegram_username + ')' : '') + '.';
 
   document.getElementById('stars-history').innerHTML = ledger.slice(0, 10).map(r => {
     const label = r.type === 'accrual' ? 'GW' + r.gw + ' · place ' + r.place
@@ -1751,7 +1751,8 @@ async function loadStarsSection(profile) {
 async function requestWithdraw() {
   const bal = window._starsBalance || 0;
   if (bal < 50) return;
-  if (!confirm('Withdraw ' + bal + ' ⭐ to @' + window._starsUsername + '?')) return;
+  const dest = window._starsUsername ? '@' + window._starsUsername : 'your Telegram account';
+  if (!confirm('Withdraw ' + bal + ' ⭐ to ' + dest + '?')) return;
   const session = await sb.auth.getSession();
   const token = session.data.session ? session.data.session.access_token : null;
   if (!token) { showToast('Not authenticated'); return; }
