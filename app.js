@@ -330,6 +330,11 @@ async function loadAppData() {
   // Load players + stats once (they don't change per GW)
   await Promise.all([loadPlayers(), loadPlayerStats(), loadLineups()]);
   if (currentUser) loadProfileData();
+  // deep link: t.me/...?startapp=prizes opens the admin Prizes page
+  try {
+    const sp = TMA && window.Telegram.WebApp.initDataUnsafe ? window.Telegram.WebApp.initDataUnsafe.start_param : null;
+    if (sp === 'prizes' && isAdmin() && !window._deepLinkDone) { window._deepLinkDone = true; openPage('prizes'); }
+  } catch (e) { /* no-op */ }
 
   // Check URL hash for initial GW
   const hashGW = parseGWFromHash();
@@ -348,6 +353,8 @@ function updateMenuState() {
   document.getElementById('menu-signin').style.display = isAuth ? 'none' : '';
   document.getElementById('menu-admin').style.display = isAdmin() ? '' : 'none';
   document.getElementById('menu-prizes').style.display = isAdmin() ? '' : 'none';
+  document.getElementById('menu-grp-admin').style.display = isAdmin() ? '' : 'none';
+  document.getElementById('menu-grp-account').style.display = currentUser ? '' : 'none';
   if (TMA) {
     document.getElementById('menu-signin').style.display = 'none';
     document.getElementById('menu-signout').style.display = 'none';
@@ -1709,6 +1716,7 @@ async function loadProfileData() {
     if (TMA) {
       document.getElementById('profile-telegram-section').style.display = 'none';
       document.getElementById('profile-tma-connected').style.display = '';
+      document.getElementById('profile-tg-status').textContent = 'Connected via Telegram' + (data.telegram_username ? ' · @' + data.telegram_username : '');
       document.getElementById('profile-email-row').style.display = (currentUser.email || '').endsWith('@telegram.goatapp.club') ? 'none' : '';
     }
     loadStarsSection(data);
@@ -1719,8 +1727,8 @@ async function loadProfileData() {
 async function loadStarsSection(profile) {
   document.getElementById('profile-stars-section').style.display = '';
   const [ledgerRes, payoutRes] = await Promise.all([
-    sb.from('prize_ledger').select('gw,type,place,stars,created_at').order('created_at', { ascending: false }),
-    sb.from('payouts').select('stars,status').in('status', ['requested', 'processing', 'expired']),
+    sb.from('prize_ledger').select('gw,type,place,stars,created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false }),
+    sb.from('payouts').select('stars,status,created_at').eq('user_id', currentUser.id).in('status', ['requested', 'processing', 'expired']),
   ]);
   const ledger = ledgerRes.data || [];
   const pending = payoutRes.data || [];
@@ -1732,51 +1740,67 @@ async function loadStarsSection(profile) {
   document.getElementById('stars-balance').textContent = balance;
   const pendEl = document.getElementById('stars-pending');
   pendEl.style.display = pending.length ? '' : 'none';
-  if (pending.length) pendEl.textContent = 'Withdrawal in progress: ' + pendingStars + ' ⭐';
+  if (pending.length) {
+    pendEl.innerHTML = '<span class="chip chip-amber">Pending review</span>'
+      + '<span class="stars-hint" style="margin:0">sent ' + fmtDT(pending[0].created_at) + '</span>';
+  }
 
   const btn = document.getElementById('stars-withdraw-btn');
   const hint = document.getElementById('stars-hint');
-  // username is checked live server-side on request; don't gate on the cached copy
   btn.disabled = balance < 50 || pending.length > 0;
-  if (pending.length) hint.textContent = 'Your request is waiting for approval.';
-  else if (balance < 50) hint.textContent = 'Win gameweek prizes — withdraw from 50 ⭐.';
+  if (pending.length) hint.textContent = 'Your request is being reviewed — up to 24 hours.';
+  else if (balance < 50) hint.textContent = 'Win gameweek prizes — withdraw from 50 \u2B50.';
   else hint.textContent = 'Stars are sent to your public Telegram @username' + (profile.telegram_username ? ' (@' + profile.telegram_username + ')' : '') + '.';
 
-  document.getElementById('stars-history').innerHTML = ledger.slice(0, 10).map(r => {
-    const label = r.type === 'accrual' ? 'GW' + r.gw + ' · place ' + r.place
-      : r.type === 'withdrawal' ? 'Withdrawal' : 'Correction';
-    return '<div class="stars-row"><span>' + label + '</span><span>' + (r.stars > 0 ? '+' : '') + r.stars + ' ⭐</span></div>';
+  const hist = document.getElementById('profile-history-card');
+  hist.style.display = ledger.length ? '' : 'none';
+  document.getElementById('stars-history').innerHTML = ledger.slice(0, 15).map(r => {
+    const label = r.type === 'accrual' ? 'GW' + r.gw + ' \u00B7 ' + placeLabel(r.place)
+      : r.type === 'withdrawal' ? 'Withdrawal' : 'Adjustment';
+    return '<div class="stars-row"><span style="color:#888;min-width:64px;display:inline-block">' + fmtD(r.created_at) + '</span>'
+      + '<span style="flex:1;padding:0 8px">' + label + '</span>'
+      + '<span style="font-weight:800;color:' + (r.stars > 0 ? '#4CAF50' : '#888') + '">' + (r.stars > 0 ? '+' : '') + r.stars + ' \u2B50</span></div>';
   }).join('');
 }
 
-async function requestWithdraw() {
-  const bal = window._starsBalance || 0;
-  if (bal < 50) return;
-  const dest = window._starsUsername ? '@' + window._starsUsername : 'your Telegram account';
-  if (!confirm('Withdraw ' + bal + ' ⭐ to ' + dest + '?')) return;
-  const session = await sb.auth.getSession();
-  const token = session.data.session ? session.data.session.access_token : null;
-  if (!token) { showToast('Not authenticated'); return; }
-  const resp = await fetch('/api/payout-request', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    body: JSON.stringify({ stars: bal }),
-  });
-  const data = await resp.json();
-  if (data.ok) showToast('Request sent — stars arrive after approval');
-  else if (data.error === 'already_active') showToast('You already have a pending request');
-  else if (data.error === 'no_username') showToast('Set a public @username in Telegram first');
-  else showToast('Request failed — try again later');
-  loadProfileData();
+function placeLabel(p) {
+  if (!p) return 'prize';
+  const suf = p === 1 ? 'st' : p === 2 ? 'nd' : p === 3 ? 'rd' : 'th';
+  return p + suf + ' place';
 }
 
-async function disconnectTelegram() {
-  if (!confirm('Disconnect Telegram? You won\'t receive notifications.')) return;
-  const { error } = await sb.from('profiles').update({ telegram_chat_id: null }).eq('id', currentUser.id);
-  if (!error) {
-    document.getElementById('tg-linked').style.display = 'none';
-    document.getElementById('tg-not-linked').style.display = '';
-  }
+function openWithdrawSheet() {
+  const bal = window._starsBalance || 0;
+  if (bal < 50) return;
+  document.getElementById('wsheet-sum').textContent = bal + ' \u2B50 \u2192 ' + (window._starsUsername ? '@' + window._starsUsername : 'your Telegram account');
+  document.getElementById('wsheet-send').disabled = false;
+  document.getElementById('withdraw-overlay').classList.add('open');
+}
+
+function closeWithdrawSheet() {
+  document.getElementById('withdraw-overlay').classList.remove('open');
+}
+
+async function sendWithdrawRequest(btn) {
+  btn.disabled = true;
+  const session = await sb.auth.getSession();
+  const token = session.data.session ? session.data.session.access_token : null;
+  if (!token) { showToast('Not authenticated'); btn.disabled = false; return; }
+  let data = null;
+  try {
+    const resp = await fetch('/api/payout-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ stars: window._starsBalance || 0 }),
+    });
+    data = await resp.json();
+  } catch (e) { /* network */ }
+  closeWithdrawSheet();
+  if (data && data.ok) showToast('Request sent \u2014 review takes up to 24 hours');
+  else if (data && data.error === 'already_active') showToast('You already have a pending request');
+  else if (data && data.error === 'no_username') showToast('Set a public @username in Telegram Settings first');
+  else showToast("Couldn't send \u2014 your stars are safe, try again");
+  loadProfileData();
 }
 
 async function saveProfile() {
@@ -1950,7 +1974,10 @@ async function openManagerProfile(uid) {
   content.innerHTML = '<div class="loading-spinner">Loading profile...</div>';
 
   // Fetch profile
-  const { data: profile } = await sb.from('profiles').select('id, team_name, avatar_url, is_bot').eq('id', uid).single();
+  const { data: profile } = await sb.from('profiles').select('id, team_name, avatar_url, is_bot, created_at').eq('id', uid).single();
+  const { data: accrualRows } = await sb.from('prize_ledger').select('gw,stars').eq('user_id', uid).eq('type', 'accrual');
+  const gwStars = {};
+  (accrualRows || []).forEach(r => { if (r.gw != null) gwStars[r.gw] = (gwStars[r.gw] || 0) + r.stars; });
   if (!profile) { content.innerHTML = '<div class="empty-state"><h3>Manager not found</h3></div>'; return; }
 
   // Fetch avatar from auth metadata if it's the current user
@@ -2089,8 +2116,8 @@ async function openManagerProfile(uid) {
   html += '<div class="mp-stats">';
   html += mpStatCard(totalGoats, 'GOATs', '\uD83D\uDC51');
   html += mpStatCard(totalBps.toLocaleString(), 'Total BPS', '');
-  html += mpStatCard(gwCount, 'GWs Played', '');
-  html += mpStatCard(avgGoatsPerGW, 'Avg GOATs/GW', '');
+  html += mpStatCard(gwCount, 'GWs', '');
+  html += mpStatCard(avgGoatsPerGW, 'Avg/GW', '');
   html += '</div>';
 
   // Secondary stats
@@ -2115,13 +2142,14 @@ async function openManagerProfile(uid) {
 
   // GW-by-GW table
   html += '<div class="mp-section-title">GAMEWEEK HISTORY</div>';
-  html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th><th style="text-align:right">Rank</th></tr></thead><tbody>';
+  html += '<div class="mp-gw-wrap"><table class="mp-gw-table"><thead><tr><th>GW</th><th style="text-align:center">GOATs</th><th style="text-align:right">BPS</th><th style="text-align:right">Rank</th><th style="text-align:right">\u2B50</th></tr></thead><tbody>';
   gwArr.sort((a, b) => b.gw - a.gw);
   gwArr.forEach(g => {
     const gwR = gwRanks[g.gw];
     const rowCls = (gwR && gwR.rank === 1) ? ' class="mp-highlight"' : '';
     const rankDisplay = gwR ? gwR.rank + '/' + gwR.total : '\u2013';
-    html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td><td style="text-align:right">' + rankDisplay + '</td></tr>';
+    const starsWon = gwStars[g.gw] ? '+' + gwStars[g.gw] : '\u2014';
+    html += '<tr' + rowCls + '><td>GW' + g.gw + '</td><td style="text-align:center">' + g.goats + (g.goats > 0 ? ' \uD83D\uDC51' : '') + '</td><td style="text-align:right">' + g.bps.toLocaleString() + '</td><td style="text-align:right">' + rankDisplay + '</td><td style="text-align:right;color:' + (gwStars[g.gw] ? '#4CAF50' : '#666') + '">' + starsWon + '</td></tr>';
   });
   html += '</tbody></table></div>';
 
@@ -2134,13 +2162,14 @@ function buildManagerHeader(profile, avatarUrl, seasonRank) {
   const avatarHtml = avatarUrl
     ? '<img src="' + esc(avatarUrl) + '" class="mp-avatar-img" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" alt=""><div class="mp-avatar-initial" style="display:none">' + initial + '</div>'
     : '<div class="mp-avatar-initial">' + initial + '</div>';
-  const botBadge = profile.is_bot ? ' <span class="mp-bot-badge">\uD83E\uDD16 Bot</span>' : '';
+  // bots must look like regular players in public views
   const rankHtml = seasonRank ? '<div class="mp-rank">Season Rank: <strong>' + seasonRank + '</strong></div>' : '';
+  const joined = profile.created_at ? '<div class="mgr-joined">Joined ' + fmtD(profile.created_at) + '</div>' : '';
   return '<div class="mp-header">'
     + '<div class="mp-avatar">' + avatarHtml + '</div>'
     + '<div class="mp-info">'
-    + '<div class="mp-name">' + esc(name) + botBadge + '</div>'
-    + rankHtml
+    + '<div class="mp-name">' + esc(name) + '</div>'
+    + rankHtml + joined
     + '</div></div>';
 }
 
@@ -2197,6 +2226,17 @@ function toggleMenu() {
 
 function closeMenu() {
   document.getElementById('nav-dropdown').classList.remove('open');
+}
+
+function fmtD(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + String(d.getFullYear()).slice(2);
+}
+function fmtDT(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return fmtD(iso) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
 async function shareApp() {
@@ -2266,62 +2306,95 @@ async function adminLoadBots() {
   if (!bots.length) { list.innerHTML = '<div class="bot-empty">No bots yet. Add one above.</div>'; return; }
   const stratLabels = {form:'Form',goat:'GOAT',rank:'Rank',home:'Home',away:'Away',streak:'Streak',ironman:'Iron Man',contrarian:'Contrarian',combo:'Balanced',fwd_only:'FWD Only',mid_only:'MID Only',def_only:'DEF Only',chaos:'Chaos'};
   list.innerHTML = bots.map(b =>
-    '<div class="bot-card' + (b.bot_active ? '' : ' paused') + '">'
-    + '<div class="bot-info">'
-    + '<div class="bot-name">' + esc(b.team_name) + '</div>'
-    + '<div class="bot-meta">'
-    + '<span class="bot-strategy">' + (stratLabels[b.bot_strategy] || b.bot_strategy) + '</span>'
-    + '<span>' + b.hours_before + 'h before</span>'
-    + '<span>' + (b.gws_played || 0) + ' GWs played</span>'
-    + '</div></div>'
-    + '<div class="bot-actions">'
+    '<details><summary class="bot-row" style="cursor:pointer;list-style:none">'
+    + '<span class="nm"><b>' + esc(b.team_name) + '</b> \u00B7 ' + (stratLabels[b.bot_strategy] || b.bot_strategy) + ' \u00B7 ' + b.hours_before + 'h</span>'
+    + '<span class="gws">' + (b.gws_played || 0) + ' GW</span>'
+    + (b.bot_active ? '<span class="chip chip-green">active</span>' : '<span class="chip chip-grey">paused</span>')
+    + '</summary>'
+    + '<div class="req-actions" style="padding:8px 0 12px">'
     + '<button class="bot-btn" onclick="adminToggleBot(\'' + b.id + '\')">' + (b.bot_active ? 'Pause' : 'Resume') + '</button>'
     + '<button class="bot-btn del" onclick="adminDeleteBot(\'' + b.id + '\',\'' + esc(b.team_name) + '\')">Delete</button>'
-    + '</div></div>'
+    + '</div></details>'
   ).join('');
 }
 
 // ===== PRIZE ADMIN =====
 async function adminLoadPrizes() {
-  const sumEl = document.getElementById('admin-prizes-summary');
   const queueEl = document.getElementById('admin-prizes-queue');
-  const balEl = document.getElementById('admin-prizes-balances');
-  sumEl.textContent = 'Loading…';
+  queueEl.innerHTML = '<div class="loading-spinner">Loading...</div>';
   const res = await adminApiCall('prizes-summary');
-  if (!res || !res.summary) { sumEl.textContent = 'Failed to load prizes'; return; }
-  const s = res.summary;
-  sumEl.textContent = 'Season: +' + s.accrued + ' ⭐ accrued · ' + s.withdrawn + ' ⭐ withdrawn (~$' + s.usd_spent + ') · '
-    + s.on_balances + ' ⭐ on balances (bots hold ' + s.bot_stars + ')';
+  if (!res || !res.summary) { queueEl.innerHTML = '<div class="stars-hint">Failed to load — pull to retry</div>'; return; }
 
-  queueEl.innerHTML = res.queue.length ? res.queue.map(p =>
-    '<div class="bot-card"><div class="bot-info">'
-    + '<div class="bot-name">@' + esc(p.username_snapshot) + ' · ' + p.stars + ' ⭐</div>'
-    + '<div class="bot-meta"><span>' + esc(p.team_name) + '</span><span>' + esc(p.status) + '</span>'
-    + (p.invoice_url ? '<span><a href="' + esc(p.invoice_url) + '" target="_blank">invoice</a></span>' : '')
-    + '</div></div><div class="bot-actions">'
-    + (p.status === 'requested'
-      ? '<button class="bot-btn" onclick="adminConfirmPayout(this,\'' + p.id + '\',\'' + esc(p.username_snapshot) + '\',' + p.stars + ')">Confirm</button>'
-      : '<button class="bot-btn" onclick="adminPaidPayout(this,\'' + p.id + '\')">Paid ✓</button>')
-    + '<button class="bot-btn del" onclick="adminRejectPayout(this,\'' + p.id + '\')">Reject</button>'
-    + '</div></div>'
-  ).join('') : '<div class="stars-hint">No pending withdrawal requests</div>';
+  // Requests
+  document.getElementById('prizes-req-count').textContent = res.queue.length ? '\u00B7 ' + res.queue.length : '';
+  queueEl.innerHTML = res.queue.length ? res.queue.map(p => {
+    const chip = p.status === 'requested' ? '<span class="chip chip-amber">new</span>'
+      : p.status === 'processing' ? '<span class="chip chip-amber">invoice</span>'
+      : '<span class="chip chip-red">expired</span>';
+    let meta = fmtDT(p.created_at);
+    if (p.status === 'requested') meta += ' \u00B7 balance OK';
+    if (p.status !== 'requested' && p.invoice_expires_at) meta += ' \u00B7 pay till ' + fmtD(p.invoice_expires_at);
+    const profileBtn = '<button class="bot-btn" onclick="openManagerProfile(\'' + p.user_id + '\')">Profile</button>';
+    let actions;
+    if (p.status === 'requested') {
+      actions = '<button class="bot-btn primary" onclick="adminConfirmPayout(this,\'' + p.id + '\',\'' + esc(p.username_snapshot) + '\',' + p.stars + ')">Confirm</button>'
+        + profileBtn
+        + '<button class="bot-btn del" onclick="adminRejectPayout(this,\'' + p.id + '\')">Reject</button>';
+    } else if (p.status === 'processing') {
+      actions = '<button class="bot-btn primary" onclick="adminPaidPayout(this,\'' + p.id + '\')">Paid \u2713</button>'
+        + profileBtn
+        + (p.invoice_url ? '<button class="bot-btn" onclick="openInvoice(\'' + esc(p.invoice_url) + '\')">Invoice</button>' : '');
+    } else { // expired
+      actions = '<button class="bot-btn primary" onclick="adminPaidPayout(this,\'' + p.id + '\')">Paid \u2713</button>'
+        + profileBtn
+        + '<button class="bot-btn del" onclick="adminRejectPayout(this,\'' + p.id + '\')">Reject</button>';
+    }
+    return '<div class="req-card">'
+      + '<div class="prow"><b>@' + esc(p.username_snapshot) + ' \u00B7 ' + p.stars + ' \u2B50</b>' + chip + '</div>'
+      + '<div class="req-meta">' + meta + '</div>'
+      + '<div class="req-actions">' + actions + '</div></div>';
+  }).join('') : '<div class="stars-hint">No pending withdrawal requests</div>';
 
-  balEl.innerHTML = res.balances.map(b =>
-    '<div class="stars-row"><span>' + esc(b.team_name) + (b.is_bot ? ' 🤖' : '') + (b.username ? ' · @' + esc(b.username) : '') + '</span>'
-    + '<span>' + b.balance + ' ⭐</span></div>'
-  ).join('') || '<div class="stars-hint">No balances yet</div>';
+  // Season tiles
+  const sm = res.summary;
+  document.getElementById('prizes-season-title').textContent = 'Season';
+  document.getElementById('admin-prizes-summary').innerHTML =
+    tile(sm.accrued, 'Accrued') + tile(sm.withdrawn, 'Paid out') + tile('$' + sm.usd_spent, 'Spent') + tile(sm.on_balances, 'Held') + tile(sm.bot_stars, 'Bots');
+
+  // Balances
+  document.getElementById('admin-prizes-balances').innerHTML = res.balances.length ? res.balances.map(b =>
+    '<div class="stars-row"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+    + '<span class="link-name" onclick="openManagerProfile(\'' + b.user_id + '\')">' + esc(b.team_name) + '</span>'
+    + (b.is_bot ? ' \uD83E\uDD16' : '') + (b.username ? ' \u00B7 @' + esc(b.username) : '') + '</span>'
+    + '<span style="font-weight:800">' + b.balance + ' \u2B50</span></div>'
+  ).join('') : '<div class="stars-hint">No balances yet</div>';
+
+  // Payout log
+  document.getElementById('admin-prizes-log').innerHTML = (res.recent && res.recent.length) ? res.recent.map(p => {
+    const chip = p.status === 'paid' ? '<span class="chip chip-green">paid</span>'
+      : p.status === 'rejected' ? '<span class="chip chip-red">rejected</span>'
+      : '<span class="chip chip-amber">' + esc(p.status) + '</span>';
+    return '<div class="stars-row"><span style="color:#888;min-width:64px">' + fmtD(p.created_at) + '</span>'
+      + '<span style="flex:1;padding:0 8px">@' + esc(p.username_snapshot) + ' \u00B7 ' + p.stars + ' \u2B50</span>' + chip + '</div>';
+  }).join('') : '<div class="stars-hint">No payouts yet</div>';
+}
+
+function tile(v, k) {
+  return '<div class="stat"><div class="v">' + v + '</div><div class="k">' + k + '</div></div>';
+}
+
+function openInvoice(url) {
+  if (TMA) window.Telegram.WebApp.openTelegramLink(url);
+  else window.open(url, '_blank');
 }
 
 async function adminConfirmPayout(btn, id, username, stars) {
-  if (!confirm('Buy ' + stars + ' ⭐ for @' + username + '? An xRocket invoice will arrive in your Telegram.')) return;
+  if (!confirm('Buy ' + stars + ' \u2B50 for @' + username + '? The xRocket invoice will open right away.')) return;
   btn.disabled = true;
   const res = await adminApiCall('payout-confirm', { id });
   if (res && res.ok) {
-    showToast('Pay the invoice, then press Paid ✓');
-    if (res.invoice_url) {
-      if (TMA) window.Telegram.WebApp.openTelegramLink(res.invoice_url);
-      else window.open(res.invoice_url, '_blank');
-    }
+    showToast('Pay the invoice, then press Paid \u2713');
+    if (res.invoice_url) openInvoice(res.invoice_url);
   } else showToast('Confirm failed: ' + (res && res.error ? res.error : 'unknown'));
   adminLoadPrizes();
 }
@@ -2330,7 +2403,7 @@ async function adminPaidPayout(btn, id) {
   if (!confirm('Mark as paid? This deducts the stars from the player\'s balance. Only press after the xRocket invoice is actually paid.')) return;
   btn.disabled = true;
   const res = await adminApiCall('payout-paid', { id });
-  if (res && res.ok) showToast('Settled — player notified');
+  if (res && res.ok) showToast('Settled \u2014 player notified');
   else showToast('Failed: ' + (res && res.error ? res.error : 'unknown'));
   adminLoadPrizes();
 }

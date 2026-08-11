@@ -209,8 +209,9 @@ async function payoutConfirm(id) {
   const adminChat = env('GOAT_ADMIN_CHAT_ID') || '292048';
   await tg('sendMessage', {
     chat_id: adminChat,
-    text: `⭐ <b>Інвойс на оплату</b> — ${p.stars} ⭐ для @${p.username_snapshot}\n${invoiceUrl || 'інвойс без URL — глянь split.tg'}\n\nПісля оплати зірки долетять гравцю автоматично (~2 хв). Тоді натисни <b>Paid ✓</b> у меню Prizes — це спише зірки з балансу гравця в грі.`,
+    text: `⭐ <b>Інвойс на оплату</b> — ${p.stars} ⭐ для @${p.username_snapshot}\n${invoiceUrl || 'інвойс без URL — глянь split.tg'}\n\nПісля оплати зірки долетять гравцю автоматично (~2 хв). Тоді натисни <b>Paid ✓</b> у Prizes.`,
     parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: [[{ text: '⭐ Відкрити Prizes', url: 'https://t.me/goatsoccergame_bot/goat?startapp=prizes' }]] },
   });
 
   return { ok: true, invoice_url: invoiceUrl, expires_at: expiresAt };

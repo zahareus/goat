@@ -33,7 +33,8 @@ module.exports = async function handler(req, res) {
           await tg('sendMessage', {
             chat_id: adminChat,
             parse_mode: 'HTML',
-            text: `⚠️ Інвойс для @${p.username_snapshot} (${p.stars} ⭐) прострочений.\nЯкщо ти його ОПЛАТИВ — натисни Paid ✓ в адмінці (спише баланс). Якщо НІ — Reject поверне зірки гравцю.\nID: <code>${p.id}</code>`,
+            text: `⚠️ Інвойс для @${p.username_snapshot} (${p.stars} ⭐) прострочений.\nОплатив — натисни <b>Paid ✓</b>. Ні — <b>Reject</b> поверне зірки гравцю.`,
+            reply_markup: { inline_keyboard: [[{ text: '⭐ Відкрити Prizes', url: 'https://t.me/goatsoccergame_bot/goat?startapp=prizes' }]] },
           });
           results.push({ id: p.id, result: 'expired' });
         } else {

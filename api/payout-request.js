@@ -91,8 +91,9 @@ module.exports = async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: adminChat,
-        text: `💸 <b>Заявка на вивід</b>\n@${username} просить <b>${stars} ⭐</b> (баланс ${balance})\nID: <code>${payout.id}</code>`,
+        text: `💸 <b>Заявка на вивід</b>\n@${username} просить <b>${stars} ⭐</b>\nБаланс: ${balance} ⭐ ${balance >= stars ? '✅' : '⚠️'} · ${fmtDT(new Date())}`,
         parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '⭐ Відкрити Prizes', url: 'https://t.me/goatsoccergame_bot/goat?startapp=prizes' }]] },
       }),
     });
 
@@ -102,6 +103,11 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'server_error' });
   }
 };
+
+function fmtDT(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${String(d.getUTCFullYear()).slice(2)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
 
 async function sbGet(pathQuery) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${pathQuery}`, { headers: sbHeaders() });
