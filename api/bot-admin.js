@@ -3,6 +3,7 @@
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const ADMIN_EMAIL = 'zahareus@gmail.com';
+const prizes = require('./_prizes.js');
 
 module.exports = async function handler(req, res) {
   // Verify admin via Supabase auth token
@@ -35,6 +36,14 @@ module.exports = async function handler(req, res) {
         return res.json(await toggleBot(req.body.id));
       case 'delete':
         return res.json(await deleteBot(req.body.id));
+      case 'prizes-summary':
+        return res.json(await prizes.prizesSummary());
+      case 'payout-preview':
+        return res.json(await prizes.payoutPreview(req.body.id));
+      case 'payout-confirm':
+        return res.json(await prizes.payoutConfirm(req.body.id));
+      case 'payout-reject':
+        return res.json(await prizes.payoutReject(req.body.id, req.body.reason));
       default:
         return res.status(400).json({ error: 'Unknown action: ' + action });
     }
