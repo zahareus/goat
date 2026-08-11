@@ -157,7 +157,12 @@ async function finalizeGw(gw) {
     })));
   }
   await markFinalized(gw);
-  await notifyAll(gw, standings, prizes);
+  try {
+    await notifyAll(gw, standings, prizes);
+  } catch (e) {
+    // accruals are in; a Telegram hiccup must not look like a failed finalize
+    console.error('notifyAll failed for gw', gw, e);
+  }
   return { players: standings.length, prizes: prizes.length };
 }
 
@@ -169,13 +174,15 @@ async function markFinalized(gw) {
 
 async function notifyAll(gw, standings, prizes) {
   const userIds = standings.map(s => s.uid);
-  const [profiles, ledger] = await Promise.all([
+  const [profiles, ledger, activePayouts] = await Promise.all([
     sbSelectAll('profiles', `id=in.(${userIds.join(',')})&select=id,team_name,telegram_chat_id,is_bot`),
     sbSelectAll('prize_ledger', `user_id=in.(${userIds.join(',')})&select=user_id,stars`),
+    sbSelectAll('payouts', `user_id=in.(${userIds.join(',')})&status=in.(requested,processing,expired)&select=user_id,stars`),
   ]);
   const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
   const balance = {};
   for (const row of ledger) balance[row.user_id] = (balance[row.user_id] || 0) + row.stars;
+  for (const row of activePayouts) balance[row.user_id] = (balance[row.user_id] || 0) - row.stars;
   const prizeMap = Object.fromEntries(prizes.map(p => [p.uid, p]));
 
   // admin summary

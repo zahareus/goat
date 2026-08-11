@@ -1719,7 +1719,7 @@ async function loadStarsSection(profile) {
   document.getElementById('profile-stars-section').style.display = '';
   const [ledgerRes, payoutRes] = await Promise.all([
     sb.from('prize_ledger').select('gw,type,place,stars,created_at').order('created_at', { ascending: false }),
-    sb.from('payouts').select('stars,status').in('status', ['requested', 'processing']),
+    sb.from('payouts').select('stars,status').in('status', ['requested', 'processing', 'expired']),
   ]);
   const ledger = ledgerRes.data || [];
   const pending = payoutRes.data || [];
@@ -2293,13 +2293,13 @@ async function adminLoadPrizes() {
   queueEl.innerHTML = res.queue.length ? res.queue.map(p =>
     '<div class="bot-card"><div class="bot-info">'
     + '<div class="bot-name">@' + esc(p.username_snapshot) + ' · ' + p.stars + ' ⭐</div>'
-    + '<div class="bot-meta"><span>' + esc(p.team_name) + '</span><span>' + p.status + '</span>'
-    + (p.invoice_url ? '<span><a href="' + p.invoice_url + '" target="_blank">invoice</a></span>' : '')
+    + '<div class="bot-meta"><span>' + esc(p.team_name) + '</span><span>' + esc(p.status) + '</span>'
+    + (p.invoice_url ? '<span><a href="' + esc(p.invoice_url) + '" target="_blank">invoice</a></span>' : '')
     + '</div></div><div class="bot-actions">'
     + (p.status === 'requested'
-      ? '<button class="bot-btn" onclick="adminConfirmPayout(\'' + p.id + '\',\'' + esc(p.username_snapshot) + '\',' + p.stars + ')">Confirm</button>'
-      : '')
-    + '<button class="bot-btn del" onclick="adminRejectPayout(\'' + p.id + '\')">Reject</button>'
+      ? '<button class="bot-btn" onclick="adminConfirmPayout(this,\'' + p.id + '\',\'' + esc(p.username_snapshot) + '\',' + p.stars + ')">Confirm</button>'
+      : '<button class="bot-btn" onclick="adminPaidPayout(this,\'' + p.id + '\')">Paid ✓</button>')
+    + '<button class="bot-btn del" onclick="adminRejectPayout(this,\'' + p.id + '\')">Reject</button>'
     + '</div></div>'
   ).join('') : '<div class="stars-hint">No pending withdrawal requests</div>';
 
@@ -2309,16 +2309,27 @@ async function adminLoadPrizes() {
   ).join('') || '<div class="stars-hint">No balances yet</div>';
 }
 
-async function adminConfirmPayout(id, username, stars) {
+async function adminConfirmPayout(btn, id, username, stars) {
   if (!confirm('Buy ' + stars + ' ⭐ for @' + username + '? An xRocket invoice will arrive in your Telegram.')) return;
+  btn.disabled = true;
   const res = await adminApiCall('payout-confirm', { id });
-  if (res && res.ok) showToast('Invoice sent to your Telegram — pay it to finish');
+  if (res && res.ok) showToast('Invoice sent to your Telegram — pay it, then press Paid ✓');
   else showToast('Confirm failed: ' + (res && res.error ? res.error : 'unknown'));
   adminLoadPrizes();
 }
 
-async function adminRejectPayout(id) {
+async function adminPaidPayout(btn, id) {
+  if (!confirm('Mark as paid? This deducts the stars from the player\'s balance. Only press after the xRocket invoice is actually paid.')) return;
+  btn.disabled = true;
+  const res = await adminApiCall('payout-paid', { id });
+  if (res && res.ok) showToast('Settled — player notified');
+  else showToast('Failed: ' + (res && res.error ? res.error : 'unknown'));
+  adminLoadPrizes();
+}
+
+async function adminRejectPayout(btn, id) {
   const reason = prompt('Reject reason (sent to the player):') || '';
+  btn.disabled = true;
   const res = await adminApiCall('payout-reject', { id, reason });
   if (res && res.ok) showToast('Rejected');
   adminLoadPrizes();

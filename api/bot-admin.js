@@ -5,6 +5,10 @@ const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const ADMIN_EMAIL = 'zahareus@gmail.com';
 const prizes = require('./_prizes.js');
 
+function env(name) {
+  return (process.env[name] || '').trim();
+}
+
 module.exports = async function handler(req, res) {
   // Verify admin via Supabase auth token
   const authHeader = req.headers.authorization;
@@ -14,7 +18,7 @@ module.exports = async function handler(req, res) {
     const userResp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: {
         'Authorization': authHeader,
-        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY,
+        'apikey': env('SUPABASE_SERVICE_ROLE_KEY'),
       },
     });
     if (!userResp.ok) return res.status(401).json({ error: 'Invalid token' });
@@ -42,6 +46,8 @@ module.exports = async function handler(req, res) {
         return res.json(await prizes.payoutPreview(req.body.id));
       case 'payout-confirm':
         return res.json(await prizes.payoutConfirm(req.body.id));
+      case 'payout-paid':
+        return res.json(await prizes.payoutPaid(req.body.id));
       case 'payout-reject':
         return res.json(await prizes.payoutReject(req.body.id, req.body.reason));
       default:
@@ -57,8 +63,8 @@ module.exports = async function handler(req, res) {
 
 function sbHeaders() {
   return {
-    'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY,
-    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'apikey': env('SUPABASE_SERVICE_ROLE_KEY'),
+    'Authorization': `Bearer ${env('SUPABASE_SERVICE_ROLE_KEY')}`,
     'Content-Type': 'application/json',
   };
 }

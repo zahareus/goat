@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
 
     const [ledger, active] = await Promise.all([
       sbGet(`prize_ledger?user_id=eq.${userId}&select=stars`),
-      sbGet(`payouts?user_id=eq.${userId}&status=in.(requested,processing)&select=stars`),
+      sbGet(`payouts?user_id=eq.${userId}&status=in.(requested,processing,expired)&select=stars`),
     ]);
     const balance = ledger.reduce((s, r) => s + r.stars, 0) - active.reduce((s, r) => s + r.stars, 0);
 

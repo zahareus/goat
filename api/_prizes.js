@@ -75,7 +75,7 @@ async function balances() {
   const bal = {};
   for (const r of ledger) bal[r.user_id] = (bal[r.user_id] || 0) + r.stars;
   for (const p of payouts) {
-    if (p.status === 'requested' || p.status === 'processing') bal[p.user_id] = (bal[p.user_id] || 0) - p.stars;
+    if (['requested', 'processing', 'expired'].includes(p.status)) bal[p.user_id] = (bal[p.user_id] || 0) - p.stars;
   }
   return { ledger, payouts, profiles, bal };
 }
@@ -105,7 +105,7 @@ async function prizesSummary() {
     .sort((a, b) => b.balance - a.balance);
 
   const queue = payouts
-    .filter(p => p.status === 'requested' || p.status === 'processing')
+    .filter(p => ['requested', 'processing', 'expired'].includes(p.status))
     .map(p => ({
       ...p,
       team_name: profileMap[p.user_id] ? profileMap[p.user_id].team_name : '?',
@@ -155,42 +155,90 @@ async function payoutConfirm(id) {
   if (!pre.username_match) throw new Error(`username changed: @${p.username_snapshot} -> @${pre.current_username || 'none'} — reject and let the player re-request`);
   if (!pre.balance_ok) throw new Error('insufficient balance');
 
-  const buy = await split('/buy/stars', {
-    payment_method: 'xrocket',
-    username: p.username_snapshot,
-    quantity: p.stars,
-    transfer_id: p.id,
-  });
-
-  const invoice = buy && buy.invoice ? buy.invoice : buy;
-  const invoiceUrl = invoice && (invoice.url || invoice.pay_url || invoice.payment_url) || null;
-  const validUntil = invoice && (invoice.valid_until || invoice.expires_at) || null;
-  const expiresAt = validUntil
-    ? new Date(typeof validUntil === 'number' ? validUntil * 1000 : validUntil).toISOString()
-    : new Date(Date.now() + 3600e3).toISOString();
-
-  await sbWrite('PATCH', 'payouts', `id=eq.${id}`, {
+  // Compare-and-swap BEFORE spending money: whoever flips requested->processing
+  // owns the purchase; a double click or Vercel retry loses the race and stops.
+  const claimed = await sbWrite('PATCH', 'payouts', `id=eq.${id}&status=eq.requested`, {
     status: 'processing',
-    invoice_url: invoiceUrl,
-    invoice_expires_at: expiresAt,
-    provider_response: buy,
     updated_at: new Date().toISOString(),
   });
+  if (!claimed.length) throw new Error('payout already being processed');
+
+  let buy;
+  try {
+    buy = await split('/buy/stars', {
+      payment_method: 'xrocket',
+      username: p.username_snapshot,
+      quantity: p.stars,
+      transfer_id: p.id,
+    });
+  } catch (e) {
+    // purchase call itself failed => no invoice exists, safe to release the claim
+    await sbWrite('PATCH', 'payouts', `id=eq.${id}&status=eq.processing`, {
+      status: 'requested',
+      updated_at: new Date().toISOString(),
+    });
+    throw e;
+  }
+
+  // From here money may already be spendable — never throw, only degrade.
+  let invoiceUrl = null;
+  let expiresAt = new Date(Date.now() + 24 * 3600e3).toISOString();
+  try {
+    const invoice = buy && buy.invoice ? buy.invoice : buy;
+    invoiceUrl = (invoice && (invoice.url || invoice.pay_url || invoice.payment_url)) || null;
+    const v = invoice && (invoice.valid_until || invoice.expires_at);
+    if (typeof v === 'number' && isFinite(v)) {
+      const ms = v > 1e12 ? v : v * 1000; // seconds vs milliseconds
+      if (new Date(ms).getTime() > Date.now()) expiresAt = new Date(ms).toISOString();
+    } else if (typeof v === 'string' && !isNaN(Date.parse(v))) {
+      expiresAt = new Date(v).toISOString();
+    }
+  } catch (e) { /* keep defaults */ }
+
+  try {
+    await sbWrite('PATCH', 'payouts', `id=eq.${id}`, {
+      invoice_url: invoiceUrl,
+      invoice_expires_at: expiresAt,
+      provider_response: buy,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('payoutConfirm: invoice created but PATCH failed', id, e);
+  }
 
   const adminChat = env('GOAT_ADMIN_CHAT_ID') || '292048';
   await tg('sendMessage', {
     chat_id: adminChat,
-    text: `⭐ <b>Оплати інвойс</b> — ${p.stars} ⭐ для @${p.username_snapshot}\n${invoiceUrl || 'інвойс без URL — глянь split.tg'}`,
+    text: `⭐ <b>Оплати інвойс</b> — ${p.stars} ⭐ для @${p.username_snapshot}\n${invoiceUrl || 'інвойс без URL — глянь split.tg'}\n\nПісля оплати натисни <b>Paid ✓</b> в адмінці — це спише зірки з балансу гравця.`,
     parse_mode: 'HTML',
   });
 
   return { ok: true, invoice_url: invoiceUrl, expires_at: expiresAt };
 }
 
+// Admin's explicit "I paid the invoice" — the only settlement path:
+// split.tg's /user/invoices keeps xrocket invoices as status=pending even
+// after real payment+delivery (verified 11.08), so no machine truth exists.
+async function payoutPaid(id) {
+  const [p] = await sbSelectAll('payouts', `id=eq.${id}&select=*`);
+  if (!p) throw new Error('payout not found');
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/apply_payout_paid`, {
+    method: 'POST',
+    headers: sbHeaders(),
+    body: JSON.stringify({ p_payout_id: id, p_provider: { confirmed_by: 'admin', at: new Date().toISOString() } }),
+  });
+  if (!r.ok) throw new Error(`rpc apply_payout_paid ${r.status}: ${await r.text()}`);
+  await tg('sendMessage', {
+    chat_id: p.telegram_chat_id,
+    text: `⭐ ${p.stars} stars are on their way to @${p.username_snapshot} — check Settings → My Stars in a minute!`,
+  });
+  return { ok: true };
+}
+
 async function payoutReject(id, reason) {
   const [p] = await sbSelectAll('payouts', `id=eq.${id}&select=*`);
   if (!p) throw new Error('payout not found');
-  if (p.status !== 'requested' && p.status !== 'processing') throw new Error(`payout is ${p.status}`);
+  if (!['requested', 'processing', 'expired'].includes(p.status)) throw new Error(`payout is ${p.status}`);
 
   await sbWrite('PATCH', 'payouts', `id=eq.${id}`, {
     status: 'rejected',
@@ -204,4 +252,4 @@ async function payoutReject(id, reason) {
   return { ok: true };
 }
 
-module.exports = { prizesSummary, payoutPreview, payoutConfirm, payoutReject, split, tg, sbSelectAll, sbHeaders, env };
+module.exports = { prizesSummary, payoutPreview, payoutConfirm, payoutPaid, payoutReject, split, tg, sbSelectAll, sbHeaders, env };
