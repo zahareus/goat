@@ -220,6 +220,13 @@ async function resolveExistingUser(tgUser) {
 async function authResponse(userId, tgUser, isNew) {
   const user = await getAuthUser(userId);
   await ensureTelegramMetadata(user, tgUser);
+  // Payouts send Stars to @username, so keep it fresh on every login —
+  // user_metadata captures it only once at signup and Telegram frees old
+  // usernames immediately after a change.
+  await sbAdmin(`/rest/v1/profiles?id=eq.${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ telegram_username: tgUser.username || null }),
+  });
   const email = user.email || syntheticEmail(tgUser);
   const link = await sbAdmin('/auth/v1/admin/generate_link', {
     method: 'POST',
