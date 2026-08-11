@@ -347,6 +347,7 @@ function updateMenuState() {
   document.getElementById('menu-signout').style.display = isAuth ? '' : 'none';
   document.getElementById('menu-signin').style.display = isAuth ? 'none' : '';
   document.getElementById('menu-admin').style.display = isAdmin() ? '' : 'none';
+  document.getElementById('menu-prizes').style.display = isAdmin() ? '' : 'none';
   if (TMA) {
     document.getElementById('menu-signin').style.display = 'none';
     document.getElementById('menu-signout').style.display = 'none';
@@ -2238,7 +2239,8 @@ function openPage(name) {
     tmaOverlayCloser = function() { closePage(name); };
     window.Telegram.WebApp.BackButton.show();
   }
-  if (name === 'admin') { adminLoadBots(); adminLoadPrizes(); }
+  if (name === 'admin') adminLoadBots();
+  if (name === 'prizes') adminLoadPrizes();
 }
 
 // ===== BOT ADMIN =====
@@ -2314,8 +2316,13 @@ async function adminConfirmPayout(btn, id, username, stars) {
   if (!confirm('Buy ' + stars + ' ⭐ for @' + username + '? An xRocket invoice will arrive in your Telegram.')) return;
   btn.disabled = true;
   const res = await adminApiCall('payout-confirm', { id });
-  if (res && res.ok) showToast('Invoice sent to your Telegram — pay it, then press Paid ✓');
-  else showToast('Confirm failed: ' + (res && res.error ? res.error : 'unknown'));
+  if (res && res.ok) {
+    showToast('Pay the invoice, then press Paid ✓');
+    if (res.invoice_url) {
+      if (TMA) window.Telegram.WebApp.openTelegramLink(res.invoice_url);
+      else window.open(res.invoice_url, '_blank');
+    }
+  } else showToast('Confirm failed: ' + (res && res.error ? res.error : 'unknown'));
   adminLoadPrizes();
 }
 

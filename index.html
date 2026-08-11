@@ -59,6 +59,7 @@
       <a id="menu-profile" onclick="openPage('profile')" style="display:none">Profile</a>
       <a onclick="openPage('rules')">Rules</a>
       <a onclick="shareApp()">Invite Friends</a>
+      <a id="menu-prizes" onclick="openPage('prizes')" style="display:none">Prizes</a>
       <a id="menu-admin" onclick="openPage('admin')" style="display:none">Bot Admin</a>
       <a id="menu-signin" href="https://t.me/goatsoccergame_bot/goat" style="display:none">Play in Telegram</a>
       <a id="menu-signout" onclick="handleSignOut()" style="display:none">Sign Out</a>
@@ -238,6 +239,28 @@
 </div>
 
 
+<!-- PRIZES PAGE (admin) -->
+<div id="page-prizes" class="page-overlay">
+  <div class="page-header">
+    <button class="page-back" onclick="closePage('prizes')">&larr; Back</button>
+    <div class="page-title">Prizes</div>
+  </div>
+  <div class="admin-body">
+    <div class="admin-section">
+      <div class="admin-section-title">Season summary</div>
+      <div id="admin-prizes-summary" class="stars-hint">Loading…</div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-title">Withdrawal requests</div>
+      <div id="admin-prizes-queue"></div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-title">Balances</div>
+      <div id="admin-prizes-balances"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ADMIN PAGE (Bot Management) -->
 <div id="page-admin" class="page-overlay">
   <div class="page-header">
@@ -245,14 +268,6 @@
     <div class="page-title">Bot Admin</div>
   </div>
   <div class="admin-body">
-    <div class="admin-section">
-      <div class="admin-section-title">Prizes</div>
-      <div id="admin-prizes-summary" class="stars-hint">Loading…</div>
-      <div id="admin-prizes-queue"></div>
-      <details style="margin-top:10px"><summary class="stars-hint" style="cursor:pointer">All balances</summary>
-        <div id="admin-prizes-balances"></div>
-      </details>
-    </div>
     <div class="admin-section">
       <div class="admin-section-title">Add Bot</div>
       <div class="admin-add-form">
