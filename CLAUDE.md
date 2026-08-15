@@ -56,6 +56,29 @@ When modifying code:
 - `app.js` — monolithic frontend (2190 lines)
 - Admin email: `zahareus@gmail.com`
 
+## Domain Vocabulary
+
+- **TMA** — Telegram Mini App (t.me/goatsoccergame_bot/goat) — the ONLY way to play. Browser goatapp.club = landing page only; full web app exists solely behind `?webapp=1` for Playwright e2e (never remove).
+- **GOAT pick** — user's chosen player for one fixture; `is_goat` = TRUE for ALL players sharing max BPS (ties allowed).
+- **Prize ledger** — `prize_ledger` + `payouts` tables; Telegram Stars paid via split.tg (xRocket USDT invoices). Bots participate in prizes as economy stabilizers — never expose bot status in public UI.
+- **Finalization** — automatic n8n cron ("GOAT Prize Finalize"): gate = all fixtures FT + results final + 27h buffer.
+
+## 🔴 Iron Rules
+
+1. **Payout truth = admin's explicit "Paid ✓" click.** split.tg `/user/invoices` keeps xrocket invoices `pending` even after real payment — there is NO machine source of payment truth. Confirm = CAS `requested→processing` BEFORE buying; reconcile only marks `expired`, never returns to `requested`.
+2. **Auth is initData-only** (HMAC in `lib/telegram-initdata.js`); unknown TG user silently gets an auto-account. Never log initData or token_hash. Cached session accepted only if `user_metadata.telegram_id` matches initData.
+3. **CSP `frame-ancestors` in vercel.json** replaces X-Frame-Options — don't restore DENY, don't add other CSP directives (site relies on inline onclick).
+4. **`backups/` may contain n8n exports with live secrets** — stays gitignored, never `git add -A` around it.
+5. **UI rules from Victor:** no label may wrap to 2 lines; dates everywhere DD/MM/YY.
+
+## ⚠️ Known Traps
+
+- Vercel env values (created ~02.2026) have a trailing newline — always read env through the trimming `env()` helper (`api/telegram-auth.js` pattern).
+- GoTrue admin user update = **PUT** (PATCH → 405).
+- `generate_link {type:'magiclink'}` for a nonexistent email **CREATES the user**; probe existence only with `{type:'recovery'}`.
+- Supabase default privileges auto-grant `anon` on new tables — every CREATE TABLE needs an explicit REVOKE (verified incident: anon read on prize tables).
+- First e2e auth-spec run sometimes flakes — rerun the spec solo before debugging.
+
 ## Security (Supabase)
 
 - RLS is ENABLED on all public tables — anon cannot write. Telegram webhook verifies
