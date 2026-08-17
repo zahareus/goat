@@ -769,7 +769,7 @@ function renderMatchBlocks() {
     const isFt = f.status === 'ft';
     const isLive = f.status === 'live';
     let lockedHtml = '';
-    if (isFt) lockedHtml = '<span class="match-locked" style="color:#666">FT ' + f.home_score + '-' + f.away_score + '</span>';
+    if (isFt) lockedHtml = '<span class="match-locked" style="color:var(--text-mute)">FT ' + f.home_score + '-' + f.away_score + '</span>';
     else if (isLive) lockedHtml = '<span class="match-locked">\u23F1 ' + f.minutes + "\u2019 " + f.home_score + '-' + f.away_score + '</span>';
     else if (locked) lockedHtml = '<span class="match-locked">\uD83D\uDD12 LOCKED</span>';
     const timeStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
@@ -1119,7 +1119,7 @@ function showLiveMatchContent(fixtureId) {
   html += '<div class="live-team-name">' + f.away_short + '</div>';
   html += '</div>';
   if (isLive) html += '<div style="text-align:center"><span class="live-minute">\u23F1 ' + f.minutes + "'" + '</span></div>';
-  if (isFt) html += '<div style="text-align:center"><span style="color:#666;font-size:12px;font-weight:700">FULL TIME</span></div>';
+  if (isFt) html += '<div style="text-align:center"><span style="color:var(--text-mute);font-size:12px;font-weight:700">FULL TIME</span></div>';
   html += '</div>';
 
   // Player cards
@@ -1457,13 +1457,13 @@ async function loadGWStandings(gw, content) {
   // Build HTML
   let html = buildStandingsToggle();
   html += '<div class="lb-header">';
-  html += '<div style="font-size:14px;font-weight:900;color:#fff">LEADERBOARD \u2014 GW' + gw + '</div>';
-  html += '<div style="font-size:11px;color:#777;margin-top:4px">Ranked by: GOATs \u00B7 tiebreak: Total BPS &nbsp;\u00B7&nbsp; <span style="color:#BFB294;font-weight:700">' + sorted.length + ' managers</span></div>';
+  html += '<div style="font-size:14px;font-weight:900;color:var(--text-strong)">LEADERBOARD \u2014 GW' + gw + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:4px">Ranked by: GOATs \u00B7 tiebreak: Total BPS &nbsp;\u00B7&nbsp; <span style="color:var(--accent);font-weight:700">' + sorted.length + ' managers</span></div>';
   html += '</div>';
 
   if (myEntry) {
     html += '<div class="lb-your-pos"><div>';
-    html += '<div style="font-size:11px;color:#777;margin-bottom:2px">YOUR POSITION</div>';
+    html += '<div style="font-size:11px;color:var(--text-mute);margin-bottom:2px">YOUR POSITION</div>';
     html += '<div class="lb-your-rank">#' + myRank + '</div>';
     html += '</div><div class="lb-your-info">' + esc(myEntry.name) + '<br><span>' + myEntry.goats + ' GOATs</span> \u00B7 <span>' + myEntry.bps.toLocaleString() + ' BPS</span></div></div>';
   }
@@ -1574,13 +1574,13 @@ async function loadSeasonStandings(content) {
   // Build HTML
   let html = buildStandingsToggle();
   html += '<div class="lb-header">';
-  html += '<div style="font-size:14px;font-weight:900;color:#fff">SEASON STANDINGS</div>';
-  html += '<div style="font-size:11px;color:#777;margin-top:4px">All gameweeks combined \u00B7 <span style="color:#BFB294;font-weight:700">' + sorted.length + ' managers</span></div>';
+  html += '<div style="font-size:14px;font-weight:900;color:var(--text-strong)">SEASON STANDINGS</div>';
+  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:4px">All gameweeks combined \u00B7 <span style="color:var(--accent);font-weight:700">' + sorted.length + ' managers</span></div>';
   html += '</div>';
 
   if (myEntry) {
     html += '<div class="lb-your-pos"><div>';
-    html += '<div style="font-size:11px;color:#777;margin-bottom:2px">YOUR POSITION</div>';
+    html += '<div style="font-size:11px;color:var(--text-mute);margin-bottom:2px">YOUR POSITION</div>';
     html += '<div class="lb-your-rank">#' + myRank + '</div>';
     html += '</div><div class="lb-your-info">' + esc(myEntry.name) + '<br><span>' + myEntry.goats + ' GOATs</span> \u00B7 <span>' + myEntry.bps.toLocaleString() + ' BPS</span> \u00B7 <span>' + myEntry.gwCount + ' GWs</span></div></div>';
   }
@@ -1702,7 +1702,7 @@ async function loadStarsSection(profile) {
   document.getElementById('stars-history').innerHTML = ledger.slice(0, 15).map(r => {
     const label = r.type === 'accrual' ? 'GW' + r.gw + ' \u00B7 ' + placeLabel(r.place)
       : r.type === 'withdrawal' ? 'Withdrawal' : 'Adjustment';
-    return '<div class="stars-row"><span style="color:#888;min-width:64px;display:inline-block">' + fmtD(r.created_at) + '</span>'
+    return '<div class="stars-row"><span style="color:var(--text-mute);min-width:64px;display:inline-block">' + fmtD(r.created_at) + '</span>'
       + '<span style="flex:1;padding:0 8px">' + label + '</span>'
       + '<span style="font-weight:800;color:' + (r.stars > 0 ? '#4CAF50' : '#888') + '">' + (r.stars > 0 ? '+' : '') + r.stars + ' \u2B50</span></div>';
   }).join('');
@@ -1875,7 +1875,7 @@ function buildProfileStatsMock() {
 
 function buildProfileHistory(history) {
   if (!history || !history.length) {
-    return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:#555;text-align:center;font-size:12px">No match history available</p>';
+    return '<div class="mb-history-title">Season History</div><p style="padding:20px;color:var(--text-dim);text-align:center;font-size:12px">No match history available</p>';
   }
   // Ensure bps_rank exists (fallback calc for old data)
   var byFix = {};
@@ -1896,9 +1896,9 @@ function buildProfileHistory(history) {
       var bps = h.bps || 0;
       var rank = h.bps_rank;
       var rankHtml = '';
-      if (rank === 1) rankHtml = ' <span style="color:#BFB294">\uD83D\uDC51</span>';
-      else if (rank && rank <= 3) rankHtml = ' <span style="color:#8a8060;font-size:10px">(' + rank + ')</span>';
-      else if (rank) rankHtml = ' <span style="color:#555;font-size:10px">(' + rank + ')</span>';
+      if (rank === 1) rankHtml = ' <span style="color:var(--accent)">\uD83D\uDC51</span>';
+      else if (rank && rank <= 3) rankHtml = ' <span style="color:var(--gold-300);font-size:10px">(' + rank + ')</span>';
+      else if (rank) rankHtml = ' <span style="color:var(--text-dim);font-size:10px">(' + rank + ')</span>';
       var rowCls = rank === 1 ? ' class="goat-row"' : '';
       rows += '<tr' + rowCls + '><td>GW' + gw + '</td><td>' + opp + ' ' + ha + '</td><td>' + h.minutes + "'" + '</td><td class="td-bps">' + bps + rankHtml + '</td></tr>';
     } else {
@@ -2323,7 +2323,7 @@ async function adminLoadPrizes() {
     const chip = p.status === 'paid' ? '<span class="chip chip-green">paid</span>'
       : p.status === 'rejected' ? '<span class="chip chip-red">rejected</span>'
       : '<span class="chip chip-amber">' + esc(p.status) + '</span>';
-    return '<div class="stars-row"><span style="color:#888;min-width:64px">' + fmtD(p.created_at) + '</span>'
+    return '<div class="stars-row"><span style="color:var(--text-mute);min-width:64px">' + fmtD(p.created_at) + '</span>'
       + '<span style="flex:1;padding:0 8px">@' + esc(p.username_snapshot) + ' \u00B7 ' + p.stars + ' \u2B50</span>' + chip + '</div>';
   }).join('') : '<div class="stars-hint">No payouts yet</div>';
 }
