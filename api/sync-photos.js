@@ -3,7 +3,8 @@
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const FPL_CDN = 'https://resources.premierleague.com/premierleague25/photos/players/110x140/';
+// season-agnostic path; files are p{code}.png (the old premierleague25/ path started 403ing)
+const FPL_CDN = 'https://resources.premierleague.com/premierleague/photos/players/110x140/';
 const BUCKET = 'player-photos';
 const SECRET = process.env.GOAT_NOTIFY_SECRET;
 
@@ -52,7 +53,7 @@ module.exports = async function handler(req, res) {
 
     for (const p of batch) {
       try {
-        const photoRes = await fetch(`${FPL_CDN}${p.code}.png`, {
+        const photoRes = await fetch(`${FPL_CDN}p${p.code}.png`, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
         });
         if (!photoRes.ok) { skipped++; continue; }
