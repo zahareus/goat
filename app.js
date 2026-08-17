@@ -695,6 +695,9 @@ function renderPickTab() {
   }
   document.getElementById('pick-gw-sub').textContent = subText;
 
+  const legend = document.getElementById('avail-legend');
+  if (legend) legend.style.display = lineupsData ? '' : 'none';
+
   renderSortBar();
   renderMatchBlocks();
   renderStrip();
@@ -740,7 +743,7 @@ window.addEventListener('resize', positionSortBar);
 function renderMatchBlocks() {
   const container = document.getElementById('pick-matches');
   if (!fixtures.length) {
-    container.innerHTML = '<div class="empty-state"><span class="emoji">&#x1F4C5;</span><h3>No fixtures</h3><p>Fixtures will appear when the gameweek is set up</p></div>';
+    container.innerHTML = '<div class="empty-state"><span class="emoji">&#x1F4C5;</span><h3>No fixtures yet</h3><p>This gameweek\'s schedule isn\'t out yet — check back soon</p></div>';
     return;
   }
 
@@ -833,7 +836,7 @@ function getPlayersForFixture(f) {
 
 function selectPlayer(fixtureId, elementId, cardEl, locked) {
   if (!currentUser) { promptTelegram(); return; }
-  if (viewGW < activeGW) { showToast('Cannot pick for past gameweeks'); return; }
+  if (viewGW < activeGW) { showToast('This gameweek is finished — you\'re browsing history'); return; }
   if (locked) { showToast('This match is locked'); return; }
 
   const matchBlock = document.getElementById('match-' + fixtureId);
@@ -1037,7 +1040,7 @@ async function renderLiveTab() {
 
   if (!fixtures.length) {
     nav.innerHTML = '';
-    content.innerHTML = '<div class="empty-state"><span class="emoji">&#x26BD;</span><h3>No fixtures for GW' + viewGW + '</h3><p>Fixtures will appear when the gameweek is set up</p></div>';
+    content.innerHTML = '<div class="empty-state"><span class="emoji">&#x26BD;</span><h3>No fixtures for GW' + viewGW + '</h3><p>This gameweek\'s schedule isn\'t out yet — check back soon</p></div>';
     return;
   }
 
@@ -1074,7 +1077,7 @@ async function renderLiveTab() {
     if (isLive && !firstLive) firstLive = f.id;
     if (isFt) lastFt = f.id;
 
-    navHtml += '<div class="live-match-btn" data-fid="' + f.id + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
+    navHtml += '<div class="live-match-btn" tabindex="0" data-fid="' + f.id + '" onclick="showLiveMatch(' + f.id + ',this)">' + dotHtml + f.home_short + ' - ' + f.away_short + scoreHtml + statusHtml + rankHtml + '</div>';
   }
 
   // Smart match selection: first live → last FT → first fixture
@@ -1177,6 +1180,10 @@ function showLiveMatchContent(fixtureId) {
       + '<div class="lv-bps">0</div>'
       + '</div>';
     html += '</div></div></div>';
+  } else if (f.status === 'scheduled') {
+    const ko = new Date(f.kickoff_time);
+    const koStr = ko.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + ko.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+    html += '<div class="empty-state"><span class="emoji">&#x23F1;</span><h3>Kicks off ' + koStr + '</h3><p>The live BPS race appears here once the match starts</p></div>';
   } else {
     html += '<div class="empty-state"><span class="emoji">&#x1F4CA;</span><h3>No BPS data yet</h3><p>BPS will update during the match</p></div>';
   }
@@ -1231,7 +1238,7 @@ function openChangePanel(fixtureId) {
 
   panel.innerHTML = '<div class="mt-cp-header">'
     + '<div class="mt-cp-title">' + f.home_short + ' v ' + f.away_short + ' \u00B7 ' + timeStr + '</div>'
-    + '<div class="mt-cp-close" onclick="mtCancelChange()">&#x2715;</div>'
+    + '<button class="mt-cp-close" onclick="mtCancelChange()">&#x2715;</button>'
     + '</div>'
     + '<div class="match-block" id="mt-match-' + fixtureId + '">'
     + '<div class="player-row-outer"><div class="player-row">' + cards + '</div></div>'
@@ -1392,7 +1399,7 @@ async function loadGWStandings(gw, content) {
   const gwFixtures = fixturesRes.data;
 
   if (!allPicks || !allPicks.length) {
-    content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No standings yet</h3><p>Standings appear after picks are submitted</p></div>';
+    content.innerHTML = buildStandingsToggle() + '<div class="empty-state"><span class="emoji">&#x1F3C6;</span><h3>No standings yet</h3><p>Be the first — head to Pick Team and pick your GOATs</p></div>';
     return;
   }
 

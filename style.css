@@ -25,7 +25,8 @@
 /* focus-visible — видимий фокус клавіатури на всіх інтерактивних (DESIGN.md §7) */
 :where(button,a,input,select,textarea,.tab,.pos-tab,.phex-card,.phex-name,
   .link-name,.lv-card,.mt2-card,.nav-logo,
-  .nav-menu-btn,.gw-nav-arrow,.match-selected-badge):focus-visible{
+  .nav-menu-btn,.gw-nav-arrow,.match-selected-badge,.live-match-btn,
+  .mt-cp-close,.mb-profile-close,.auth-modal-close,.lb-toggle-btn,.strip-slot.tick):focus-visible{
   outline:2px solid var(--accent);outline-offset:2px;
 }
 body{
@@ -47,7 +48,7 @@ body{
   display:flex;flex-direction:column;align-items:center;
   position:relative;max-width:420px;width:100%;
 }
-.auth-modal-close{position:absolute;top:-8px;right:-8px;color:var(--text-dim);font-size:24px;cursor:pointer;line-height:1;z-index:10}
+.auth-modal-close{background:none;border:none;font-family:inherit;position:absolute;top:-8px;right:-8px;color:var(--text-dim);font-size:24px;cursor:pointer;line-height:1;z-index:10}
 .auth-modal-close:hover{color:var(--text-strong)}
 .auth-logo{width:80px;height:80px;margin-bottom:16px}
 .auth-sub{font-size:12px;color:var(--text-mute);letter-spacing:1px;margin-bottom:24px}
@@ -150,6 +151,8 @@ body{
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .tab.locked{color:var(--text-faint);cursor:not-allowed;pointer-events:none}
 .tab.locked .lock-icon{display:inline;font-size:9px;margin-left:2px}
+.avail-legend{font-size:10px;color:var(--text-mute);margin-top:6px;display:flex;align-items:center;gap:4px}
+.avail-legend .avail-dot{margin:0 2px 0 0}
 .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;vertical-align:middle;animation:live-pulse 1.5s ease-in-out infinite}
 @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:0.2}}
 .tab-content{display:none}
@@ -270,7 +273,7 @@ body{
   z-index:1000;overflow-y:auto;padding:40px 16px;box-sizing:border-box;
 }
 .mb-profile-panel{background:var(--ink-base);border:1px solid var(--accent);width:min(520px,100%);border-radius:0;position:relative;margin:auto}
-.mb-profile-close{position:absolute;top:10px;right:14px;color:var(--text-dim);font-size:24px;cursor:pointer;line-height:1;z-index:10}
+.mb-profile-close{background:none;border:none;font-family:inherit;position:absolute;top:10px;right:14px;color:var(--text-dim);font-size:24px;cursor:pointer;line-height:1;z-index:10}
 .mb-profile-close:hover{color:var(--text-strong)}
 .mb-profile-header{display:flex;align-items:center;gap:20px;padding:24px 24px 20px;border-bottom:1px solid var(--border)}
 .mb-profile-hex-outer{
@@ -645,7 +648,7 @@ tr.lb-row.open .lb-chev{transform:rotate(180deg)}
   padding:16px 20px 10px;
 }
 .mt-cp-title{font-size:13px;font-weight:900;color:var(--accent);letter-spacing:1px;text-transform:uppercase}
-.mt-cp-close{font-size:20px;color:var(--text-dim);cursor:pointer;line-height:1;padding:12px 14px}
+.mt-cp-close{background:none;border:none;font-family:inherit;font-size:20px;color:var(--text-dim);cursor:pointer;line-height:1;padding:12px 14px}
 .mt-cp-close:hover{color:var(--text-strong)}
 
 /* ===== EMPTY / LOADING STATES ===== */

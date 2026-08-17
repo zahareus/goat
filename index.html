@@ -84,6 +84,7 @@
   <div class="gw-header">
     <div class="gw-title" id="pick-gw-title">Loading...</div>
     <div class="gw-sub" id="pick-gw-sub"></div>
+    <div class="avail-legend" id="avail-legend" style="display:none"><span class="avail-dot avail-starter"></span>expected XI &nbsp;<span class="avail-dot avail-ques"></span>doubt &nbsp;<span class="avail-dot avail-out"></span>out</div>
   </div>
   <div class="pos-tabs sort-bar" id="pick-sort-bar" style="display:none"></div>
   <div id="pick-matches"><div class="loading-spinner">Loading fixtures...</div></div>
@@ -352,7 +353,7 @@
 <!-- PLAYER PROFILE MODAL -->
 <div id="mb-profile-overlay" onclick="if(event.target===this)closeProfile()">
   <div class="mb-profile-panel">
-    <div class="mb-profile-close" onclick="closeProfile()">&#x2715;</div>
+    <button class="mb-profile-close" onclick="closeProfile()">&#x2715;</button>
     <div id="mb-profile-content"><div class="mb-loading">Loading...</div></div>
   </div>
 </div>
