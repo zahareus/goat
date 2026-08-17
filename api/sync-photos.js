@@ -45,6 +45,8 @@ module.exports = async function handler(req, res) {
     }
 
     // 4. Download and upload missing (max 20 per invocation to stay within timeout)
+    // ponytail: shuffle so players FPL has no photo for yet don't permanently block the head of the queue
+    missing.sort(() => Math.random() - 0.5);
     const batch = missing.slice(0, 20);
     let uploaded = 0;
     let skipped = 0;
