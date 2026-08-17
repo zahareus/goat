@@ -2497,6 +2497,13 @@ async function boot() {
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
+    // Fullscreen mode (Bot API 8.0+) on phones only; desktop keeps the windowed mini-app
+    if ((tg.platform === 'android' || tg.platform === 'ios') && tg.requestFullscreen && parseFloat(tg.version) >= 8) {
+      tg.onEvent('fullscreenChanged', function() {
+        document.body.classList.toggle('tma-fs', !!tg.isFullscreen);
+      });
+      try { tg.requestFullscreen(); } catch (e) {}
+    }
     if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
     if (tg.setHeaderColor) tg.setHeaderColor('#0d0d0d');
     if (tg.setBackgroundColor) tg.setBackgroundColor('#1a1a1a');
