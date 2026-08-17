@@ -31,6 +31,7 @@ let changeTempElementId = null; // currently previewed pick
 let playerStats = {};   // element_id -> {avgRank, formBps, goats}
 let statsMaxRound = 0;  // highest GW round in player_history
 let sortMode = 'avgrank'; // global player sort, applied to every match block
+let userChoseTab = false;   // a manual tab tap beats the post-boot auto-selection
 let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 let standingsMode = 'gw'; // 'gw' or 'season'
@@ -476,6 +477,7 @@ function isViewGWPickLocked() {
 }
 
 function autoSelectTab() {
+  if (userChoseTab) return;
   const hasPicks = Object.keys(userPicks).length > 0;
   const locked = isViewGWPickLocked();
 
@@ -2140,7 +2142,8 @@ function goToMatch(fixtureId) {
 }
 
 // ===== UI HELPERS =====
-function switchTab(name) {
+function switchTab(name, byUser) {
+  if (byUser) userChoseTab = true;
   // Close My Team change panel on tab switch
   if (changingFixtureId) mtClosePanel();
   // Prevent switching to locked pick tab
