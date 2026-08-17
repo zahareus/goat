@@ -2197,15 +2197,29 @@ function fmtDT(iso) {
 async function shareApp() {
   closeMenu();
   if (TMA) {
-    // share the Mini App link so invitees land in Telegram, not the mobile web
-    const text = '\u{1F410} GOAT \u2014 pick the best player of every Premier League match and outcall your friends.\n'
+    const tg = window.Telegram.WebApp;
+    const flatText = '\u{1F410} GOAT \u2014 pick the best player of every Premier League match and outcall your friends.\n'
       + '\u2B50 Top-5 of every gameweek win real Telegram Stars \u2014 50\u2B50 for #1, paid straight to your account.\n'
       + '\u{1F4F1} Free, one tap per match, runs right inside Telegram.\n'
       + 'The new season is on \u2014 jump in before the next deadline!';
-    window.Telegram.WebApp.openTelegramLink(
+    const flat = () => tg.openTelegramLink(
       'https://t.me/share/url?url=' + encodeURIComponent('https://t.me/goatsoccergame_bot/goat')
-      + '&text=' + encodeURIComponent(text)
+      + '&text=' + encodeURIComponent(flatText)
     );
+    // Preferred: bot-prepared rich message in the native picker (Bot API 8.0) —
+    // t.me/share/url leaves the mini-app window covering the chat list on some clients
+    if (tg.shareMessage && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && currentUser) {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const token = session && session.access_token;
+        if (token) {
+          const r = await fetch('/api/invite-prepare', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+          const d = await r.json();
+          if (d && d.id) { tg.shareMessage(d.id, function() {}); return; }
+        }
+      } catch(e) { /* fall through to flat */ }
+    }
+    flat();
     return;
   }
   const shareData = {
