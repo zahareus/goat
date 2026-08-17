@@ -101,7 +101,7 @@ function startTour() {
         element: '#tab-btn-standings',
         popover: {
           title: 'Standings',
-          description: 'See how you rank. Most GOATs wins, BPS total breaks ties. Rules, prizes and this tour live in the Menu. Good luck!',
+          description: 'See how you rank. Most GOATs wins, BPS total breaks ties \u2014 and the top-5 of every gameweek win Telegram Stars \u2B50 (50\u2B50 for #1). Rules, prizes and this tour live in the Menu. Good luck!',
           side: 'bottom',
           align: 'center'
         }
