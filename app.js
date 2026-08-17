@@ -872,11 +872,12 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
   selections[fixtureId] = { element_id: elementId, code, name, img };
   renderStrip();
 
-  // Every tap saves immediately — nothing is lost at the deadline
-  saveSinglePick(fixtureId, elementId);
+  // Every tap saves immediately — nothing is lost at the deadline;
+  // changes to an already-submitted squad confirm with a toast
+  saveSinglePick(fixtureId, elementId, !!localStorage.getItem(celebratedKey()));
 }
 
-async function saveSinglePick(fixtureId, elementId) {
+async function saveSinglePick(fixtureId, elementId, notify) {
   if (!currentUser || viewGW < activeGW) return;
   const existing = userPicks[fixtureId];
   try {
@@ -896,6 +897,7 @@ async function saveSinglePick(fixtureId, elementId) {
     }
     // Update local state; the gold card + badge + strip tick are the confirmation
     await loadUserPicks();
+    if (notify) showToast('Updated squad saved ✓');
   } catch(e) {
     showToast('Error saving pick');
     console.error(e);
@@ -1269,8 +1271,7 @@ async function mtSelectPlayer(fixtureId, elementId, cardEl) {
 
   // Tap = save (same instant-save as the Pick tab); ✕ just closes the panel
   if (elementId !== changeOrigElementId) {
-    await saveSinglePick(fixtureId, elementId);
-    showToast('Pick changed');
+    await saveSinglePick(fixtureId, elementId, true);
   }
   mtClosePanel();
   renderMyTeam();
