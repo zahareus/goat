@@ -880,28 +880,26 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
 async function saveSinglePick(fixtureId, elementId, notify) {
   if (!currentUser || viewGW < activeGW) return;
   const existing = userPicks[fixtureId];
-  try {
-    if (existing) {
-      if (existing.element_id === elementId) return; // no change
-      await sb.from('picks').update({
-        element_id: elementId,
-        updated_at: new Date().toISOString()
-      }).eq('id', existing.id);
-    } else {
-      await sb.from('picks').insert({
-        user_id: currentUser.id,
-        fixture_id: fixtureId,
-        element_id: elementId,
-        gw: viewGW
-      });
-    }
-    // Update local state; the gold card + badge + strip tick are the confirmation
+  if (existing && existing.element_id === elementId) return; // no change
+  // upsert: two fast taps race insert-vs-update; onConflict makes the second win cleanly
+  const { error } = await sb.from('picks').upsert({
+    user_id: currentUser.id,
+    fixture_id: fixtureId,
+    element_id: elementId,
+    gw: viewGW,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id,fixture_id' });
+  if (error) {
+    // RLS refuses at kickoff, network dies, etc. — put the DOM back to the DB truth
+    console.error(error);
+    showToast('Not saved — match may be locked');
     await loadUserPicks();
-    if (notify) showToast('Updated squad saved ✓');
-  } catch(e) {
-    showToast('Error saving pick');
-    console.error(e);
+    renderPickTab();
+    renderMyTeam();
+    return;
   }
+  await loadUserPicks();
+  if (notify) showToast('Updated squad saved ✓');
 }
 
 function celebratedKey() { return 'goat_celebrated_gw' + viewGW; }
@@ -909,37 +907,34 @@ function celebratedKey() { return 'goat_celebrated_gw' + viewGW; }
 function renderStrip() {
   const slotsEl = document.getElementById('strip-slots');
   const submitBtn = document.getElementById('strip-submit');
-  const totalMatches = fixtures.length;
-  let html = '';
-  let count = 0;
 
-  // Tick hexes: filled = picked; tapping any tick scrolls to its match
-  for (let i = 0; i < totalMatches; i++) {
-    const fid = fixtures[i].id;
-    if (selections[fid]) count++;
-    html += '<div class="strip-slot tick' + (selections[fid] ? ' filled' : '') + '" onclick="goToMatch(' + fid + ')"></div>';
+  // Tick hexes: one per fixture; tapping any tick scrolls to its match
+  let html = '';
+  for (const f of fixtures) {
+    html += '<div class="strip-slot tick' + (selections[f.id] ? ' filled' : '') + '" onclick="goToMatch(' + f.id + ')"></div>';
   }
   slotsEl.innerHTML = html;
 
-  const submitted = hasSubmitted();
-  const now = new Date();
-  const firstKO = getFirstKickoff();
-  const globalDeadlinePassed = !submitted && firstKO && now >= firstKO;
+  // Progress runs over matches that can still be picked — someone joining after the
+  // first kickoff must not be stuck at "9/10" forever
+  const open = fixtures.filter(f => !isMatchLocked(f));
+  const openTotal = open.length;
+  const count = open.filter(f => selections[f.id]).length;
   const celebrated = !!localStorage.getItem(celebratedKey());
 
   submitBtn.style.display = '';
-  if (globalDeadlinePassed) {
-    submitBtn.textContent = 'Closed';
+  if (openTotal === 0) {
+    submitBtn.textContent = hasSubmitted() ? 'Submitted ✓' : 'Closed';
     submitBtn.disabled = true;
-  } else if (count < totalMatches) {
-    // Picks are already saved \u2014 the button is a progress meter until the team is full
-    submitBtn.textContent = count + '/' + totalMatches;
+  } else if (count < openTotal) {
+    // Picks are already saved — the button is a progress meter until the team is full
+    submitBtn.textContent = count + '/' + openTotal;
     submitBtn.disabled = true;
   } else if (!celebrated) {
     submitBtn.textContent = 'Submit';
     submitBtn.disabled = false;
   } else {
-    submitBtn.textContent = '\u2713 ' + count + '/' + totalMatches;
+    submitBtn.textContent = 'Submitted ✓';
     submitBtn.disabled = true;
   }
 }
@@ -2203,7 +2198,10 @@ async function shareApp() {
   closeMenu();
   if (TMA) {
     // share the Mini App link so invitees land in Telegram, not the mobile web
-    const text = 'Join me on GOAT — pick the best player for every Premier League match!';
+    const text = '\u{1F410} GOAT \u2014 pick the best player of every Premier League match and outcall your friends.\n'
+      + '\u2B50 Top-5 of every gameweek win real Telegram Stars \u2014 50\u2B50 for #1, paid straight to your account.\n'
+      + '\u{1F4F1} Free, one tap per match, runs right inside Telegram.\n'
+      + 'The new season is on \u2014 jump in before the next deadline!';
     window.Telegram.WebApp.openTelegramLink(
       'https://t.me/share/url?url=' + encodeURIComponent('https://t.me/goatsoccergame_bot/goat')
       + '&text=' + encodeURIComponent(text)
@@ -2212,14 +2210,14 @@ async function shareApp() {
   }
   const shareData = {
     title: 'GOAT — Pick the Greatest',
-    text: 'Pick the best player for every Premier League match. No budget, no transfers — just pure prediction skill.',
+    text: 'Pick the best player of every Premier League match — top-5 each gameweek win real Telegram Stars ⭐ (50⭐ for #1). Free, plays inside Telegram.',
     url: 'https://goatapp.club'
   };
   if (navigator.share) {
     try { await navigator.share(shareData); } catch(e) {}
   } else {
     try {
-      await navigator.clipboard.writeText('Join me on GOAT — pick the best player for every Premier League match!\nhttps://goatapp.club');
+      await navigator.clipboard.writeText('🐐 GOAT — pick the best player of every Premier League match and win Telegram Stars ⭐ (top-5 paid every gameweek).\nhttps://t.me/goatsoccergame_bot/goat');
       showToast('Link copied!');
     } catch(e) {
       showToast('Share: goatapp.club');

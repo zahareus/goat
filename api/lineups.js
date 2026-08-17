@@ -118,6 +118,8 @@ function matchPlayer(rwName, teamId, fplPlayers) {
 }
 
 export default async function handler(req, res) {
+    // Edge cache: 50 phones on matchday must not hammer RotoWire per render
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     try {
         // Fetch RotoWire page
         const rwRes = await fetch('https://www.rotowire.com/soccer/lineups.php', {
