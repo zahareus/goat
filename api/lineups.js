@@ -4,13 +4,10 @@
 // Each player: { fpl_id, web_name, rw_name, rw_position, status }
 // Status: "starter" (green) | "starter_ques" (yellow, in XI but QUES) | "ques" (orange, not in XI) | "out"|"sus" (red)
 
-// RotoWire team abbreviation → FPL team_id
-const RW_TO_FPL = {
-    'ARS': 1, 'AVL': 2, 'BUR': 3, 'BRN': 3, 'BOU': 4, 'BRE': 5, 'BRI': 6, 'BHA': 6,
-    'CHE': 7, 'CRY': 8, 'EVE': 9, 'FUL': 10, 'LEE': 11, 'LDS': 11,
-    'LIV': 12, 'MCI': 13, 'MUN': 14, 'NEW': 15, 'NFO': 16, 'NOT': 16,
-    'SUN': 17, 'TOT': 18, 'WHU': 19, 'WOL': 20,
-};
+// RotoWire abbreviations that differ from FPL short_name. The abbr → team_id map
+// itself is built per-request from bootstrap-static: FPL renumbers team ids every
+// season, so a hardcoded map silently rots (bit us at the 26/27 rollover).
+const RW_ALIAS = { 'BRN': 'BUR', 'BRI': 'BHA', 'LDS': 'LEE', 'NOT': 'NFO' };
 
 // Strip accents and special characters for matching
 function normalize(str) {
@@ -142,6 +139,11 @@ export default async function handler(req, res) {
         });
         if (!fplRes.ok) return res.status(502).json({ error: 'FPL fetch error' });
         const fplData = await fplRes.json();
+        const rwToFpl = {};
+        for (const t of fplData.teams) rwToFpl[t.short_name] = t.id;
+        for (const [rw, fpl] of Object.entries(RW_ALIAS)) {
+            if (rwToFpl[fpl]) rwToFpl[rw] = rwToFpl[fpl];
+        }
         const fplPlayers = fplData.elements.map(p => ({
             id: p.id,
             web_name: p.web_name,
@@ -172,8 +174,8 @@ export default async function handler(req, res) {
 
             const homeAbbr = abbrMatches[0][1];
             const awayAbbr = abbrMatches[1][1];
-            const homeFpl = RW_TO_FPL[homeAbbr];
-            const awayFpl = RW_TO_FPL[awayAbbr];
+            const homeFpl = rwToFpl[homeAbbr];
+            const awayFpl = rwToFpl[awayAbbr];
             if (!homeFpl || !awayFpl) continue;
 
             // Split into home (is-home) and away (is-visit) sections
