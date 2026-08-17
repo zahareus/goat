@@ -7,11 +7,11 @@
   --text-strong:#fff; --text-bright:#f0f0f0; --text-body:#ccc; --text-sub:#aaa;
   --text-mute:#888; --text-dim:#666; --text-faint:#444;
   /* champagne-gold ramp */
-  --gold-100:#d4c9a8; --gold-200:var(--gold-200); --gold-300:#a89570; --gold-400:#8a7050;
+  --gold-100:#d4c9a8; --gold-200:#BFB294; --gold-300:#a89570; --gold-400:#8a7050;
   --gold-500:#7a6040; --gold-600:#6a5030; --gold-700:#4a3820; --gold-800:#3a2810;
   --gold-900:#2a2216; --gold-bg:#1a1a12;
   /* status */
-  --green:var(--success); --red:var(--danger); --warn-hi:#ffc107; --warn-lo:#f08c00;
+  --green:#4CAF50; --red:#ff4444; --warn-hi:#ffc107; --warn-lo:#f08c00;
   --avail-in:#4a8c3f; --avail-out:#e25c3d;
   /* position (muted earthy) */
   --pos-gkp:#c9a227; --pos-def:#4a8fa0; --pos-mid:#7a9a4a; --pos-fwd:#c25c3d;
