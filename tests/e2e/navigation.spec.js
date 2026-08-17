@@ -4,16 +4,16 @@ const BASE_URL = process.env.BASE_URL || 'https://goatapp.club';
 
 test.describe('GW Navigation & Historical Data', () => {
   test('can navigate to historical GW via hash', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
 
     const gwTitle = page.locator('#pick-gw-title');
     const text = await gwTitle.textContent();
-    expect(text).toMatch(/30|GW/);
+    expect(text).toMatch(/2|GW/);
   });
 
   test('historical GW shows match results with BPS', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
 
     // Should have match blocks with player data
@@ -27,7 +27,7 @@ test.describe('GW Navigation & Historical Data', () => {
   });
 
   test('standings tab shows rankings for historical GW', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     // Wait for data to fully load (GW data + standings)
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(2000);
@@ -43,7 +43,7 @@ test.describe('GW Navigation & Historical Data', () => {
   });
 
   test('GW prev/next arrows navigate between gameweeks', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
 
     const gwTitle = page.locator('#pick-gw-title');
@@ -61,7 +61,7 @@ test.describe('GW Navigation & Historical Data', () => {
   });
 
   test('My Team tab shows picks for historical GW', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     // Wait for data render (not just .tab, which exists before boot finishes) —
     // otherwise the app's late default-tab switch races our click and resets it.
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });

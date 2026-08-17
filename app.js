@@ -15,7 +15,7 @@ const ADMIN_EMAIL = 'zahareus@gmail.com';
 
 // ===== STATE =====
 let currentUser = null;
-const FIRST_GW = 28;
+const FIRST_GW = 1; // was 28: the app launched mid-season 25/26; from 26/27 the whole season is in scope
 let activeGW = null;     // "real" current GW from gw_config
 let viewGW = null;       // GW being viewed (nav switcher)
 let gwConfigs = {};      // gw -> config cache

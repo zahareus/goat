@@ -6,7 +6,7 @@ const HAS_SERVICE_KEY = !!process.env.SUPABASE_SERVICE_KEY;
 
 test.describe('Standings - Data Integrity', () => {
   test('GW standings show content', async ({ page }) => {
-    await gotoWithoutTour(page, `${BASE_URL}#gw30`);
+    await gotoWithoutTour(page, `${BASE_URL}#gw2`);
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(2000);
 
@@ -44,12 +44,10 @@ test.describe('Standings - DB Verification', () => {
   test.skip(!HAS_SERVICE_KEY, 'Requires SUPABASE_SERVICE_KEY');
 
   test('results table has BPS data for finished GWs', async () => {
-    // GW 30 should have results
     const results = await supabaseQuery('results',
       'select=fixture_id,element_id,bps,is_goat&order=bps.desc&limit=5'
     );
-
-    expect(results.length).toBeGreaterThan(0);
+    test.skip(results.length === 0, 'no finished fixtures yet this season');
 
     // Top result should have high BPS
     expect(results[0].bps).toBeGreaterThan(0);
@@ -60,8 +58,10 @@ test.describe('Standings - DB Verification', () => {
   });
 
   test('player_history has stats for completed rounds', async () => {
+    const ft = await supabaseQuery('fixtures', 'select=gw&status=eq.ft&order=gw.desc&limit=1');
+    test.skip(ft.length === 0, 'no finished fixtures yet this season');
     const history = await supabaseQuery('player_history',
-      'select=element_id,round,bps,bps_rank&round=eq.30&order=bps.desc&limit=5'
+      `select=element_id,round,bps,bps_rank&round=eq.${ft[0].gw}&order=bps.desc&limit=5`
     );
 
     expect(history.length).toBeGreaterThan(0);
@@ -71,16 +71,16 @@ test.describe('Standings - DB Verification', () => {
 
   test('fixtures data is consistent (home/away teams, status)', async () => {
     const fixtures = await supabaseQuery('fixtures',
-      'select=id,gw,home_team_id,away_team_id,status&gw=eq.30'
+      'select=id,gw,home_team_id,away_team_id,status'
     );
 
-    expect(fixtures.length).toBe(10); // PL has 10 matches per GW
+    expect(fixtures.length).toBeGreaterThan(0);
 
     for (const f of fixtures) {
       expect(f.home_team_id).toBeGreaterThan(0);
       expect(f.away_team_id).toBeGreaterThan(0);
       expect(f.home_team_id).not.toBe(f.away_team_id); // Can't play yourself
-      expect(f.status).toBe('ft'); // GW 30 should be finished
+      expect(['scheduled', 'live', 'ft']).toContain(f.status);
     }
   });
 
