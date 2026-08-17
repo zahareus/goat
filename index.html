@@ -50,7 +50,6 @@
     <button class="gw-nav-arrow" id="gw-next" onclick="changeViewGW(1)">&rarr;</button>
   </div>
   <div class="nav-right">
-    <button class="nav-help-btn" onclick="replayTour()" title="How to Play">?</button>
     <button class="nav-menu-btn" onclick="toggleMenu()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="#aaa"><circle cx="8" cy="8" r="7" stroke="#aaa" stroke-width="1" fill="none"/><circle cx="8" cy="6" r="2.5" fill="#aaa"/><path d="M3 13c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5" stroke="#aaa" stroke-width="1" fill="none"/></svg>
       Menu
@@ -60,6 +59,7 @@
       <a id="menu-profile" onclick="openPage('profile')" style="display:none">Profile</a>
       <div class="nav-group">Game</div>
       <a onclick="openPage('rules')">Rules &amp; Prizes</a>
+      <a onclick="closeMenu();replayTour()">How to Play</a>
       <a onclick="shareApp()">Invite Friends</a>
       <div class="nav-group" id="menu-grp-admin" style="display:none">Admin</div>
       <a id="menu-prizes" onclick="openPage('prizes')" style="display:none">Prizes</a>
@@ -85,12 +85,11 @@
     <div class="gw-title" id="pick-gw-title">Loading...</div>
     <div class="gw-sub" id="pick-gw-sub"></div>
   </div>
+  <div class="pos-tabs sort-bar" id="pick-sort-bar" style="display:none"></div>
   <div id="pick-matches"><div class="loading-spinner">Loading fixtures...</div></div>
   <div class="pick-spacer"></div>
   <div class="team-strip" id="team-strip">
-    <div class="strip-label">Team</div>
     <div id="strip-slots"></div>
-    <div class="strip-count" id="strip-count">0/0</div>
     <button class="strip-submit" id="strip-submit" onclick="submitPicks()">Submit</button>
   </div>
 </div>

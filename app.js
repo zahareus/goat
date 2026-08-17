@@ -30,6 +30,7 @@ let changeOrigElementId = null; // original pick before change
 let changeTempElementId = null; // currently previewed pick
 let playerStats = {};   // element_id -> {avgRank, formBps, goats}
 let statsMaxRound = 0;  // highest GW round in player_history
+let sortMode = 'avgrank'; // global player sort, applied to every match block
 let maxGW = null;       // highest GW with fixtures in DB
 let lineupsData = null; // RotoWire lineup data: { "teamId-teamId": { home, away } }
 let standingsMode = 'gw'; // 'gw' or 'season'
@@ -52,7 +53,7 @@ function startTour() {
   var driverObj = window.driver.js.driver({
     showProgress: true,
     animate: true,
-    allowClose: false,
+    allowClose: true,
     disableActiveInteraction: true,
     stagePadding: 8,
     stageRadius: 4,
@@ -62,12 +63,9 @@ function startTour() {
     onDestroyStarted: function() {
       localStorage.setItem('goat_tour_done', 'true');
       driverObj.destroy();
-      // Clean reload: remove ?tour from URL and refresh
-      var cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
-      if (cleanUrl !== window.location.href) {
-        window.location.href = cleanUrl;
-      } else {
-        window.location.reload();
+      // Drop a ?tour param without reloading \u2014 a reload here looks like a crash
+      if (window.location.search) {
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
       }
     },
     steps: [
@@ -75,16 +73,7 @@ function startTour() {
         element: '.nav',
         popover: {
           title: 'Welcome to GOAT!',
-          description: 'Every gameweek, pick the best player from each match based on the BPS system. Use the arrows to switch between gameweeks \u2014 play every one to climb the rankings.',
-          side: 'bottom',
-          align: 'center'
-        }
-      },
-      {
-        element: '#pick-matches .match-block',
-        popover: {
-          title: 'Match Block',
-          description: 'Each match lists players from both teams. Use the sort tabs \u2014 Avg Rank and Form help find top performers. Watch for coloured dots near names \u2014 they show availability status.',
+          description: 'Every gameweek, pick the best player from each match. Use the arrows to switch between gameweeks \u2014 play every one to climb the rankings.',
           side: 'bottom',
           align: 'center'
         }
@@ -92,8 +81,8 @@ function startTour() {
       {
         element: '#pick-matches .match-block .phex-card',
         popover: {
-          title: 'Player Card',
-          description: 'Tap a player to select them \u2014 gold border = your pick. Tap the \u24D8 icon to open their full profile with BPS history and detailed stats.',
+          title: 'Pick your GOAT',
+          description: 'Tap a player to pick them \u2014 gold border = your pick, saved instantly. Tap a player\u2019s name for their profile. You can change any pick until that match kicks off.',
           side: 'bottom',
           align: 'center'
         }
@@ -101,27 +90,9 @@ function startTour() {
       {
         element: '#team-strip',
         popover: {
-          title: 'Team Strip',
-          description: 'Your picks appear here. Once you\'ve selected a player for every match, hit Submit.',
+          title: 'Your team',
+          description: 'One tick per match \u2014 tap an empty tick to jump to that match. Fill all ten and hit Submit.',
           side: 'top',
-          align: 'center'
-        }
-      },
-      {
-        element: '#tab-btn-myteam',
-        popover: {
-          title: 'My Team',
-          description: 'View results for all your picks and make substitutions before matches kick off.',
-          side: 'bottom',
-          align: 'center'
-        }
-      },
-      {
-        element: '#tab-btn-live',
-        popover: {
-          title: 'Live',
-          description: 'During matches, switch here to watch BPS scores update in real-time.',
-          side: 'bottom',
           align: 'center'
         }
       },
@@ -129,18 +100,9 @@ function startTour() {
         element: '#tab-btn-standings',
         popover: {
           title: 'Standings',
-          description: 'See how you rank. Most GOATs wins, BPS total breaks ties. Good luck!',
+          description: 'See how you rank. Most GOATs wins, BPS total breaks ties. Rules, prizes and this tour live in the Menu. Good luck!',
           side: 'bottom',
           align: 'center'
-        }
-      },
-      {
-        element: '.nav-right',
-        popover: {
-          title: 'Menu',
-          description: 'Open the menu to rename your team, connect a Telegram bot for match notifications, or read the full rules.',
-          side: 'bottom',
-          align: 'end'
         }
       }
     ]
@@ -518,8 +480,9 @@ function autoSelectTab() {
   const locked = isViewGWPickLocked();
 
   if (!currentUser) {
-    // Guest: Live for active/past GW, Pick for future (browsable)
-    if (viewGW > activeGW) switchTab('pick');
+    // Guest: Pick while the GW is still open (browsable); Live only once matches exist to watch
+    if (viewGW >= activeGW && !locked) switchTab('pick');
+    else if (viewGW > activeGW) switchTab('pick');
     else switchTab('live');
   } else if (viewGW < activeGW) {
     // Past GW → Standings
@@ -527,7 +490,7 @@ function autoSelectTab() {
   } else if (locked && hasPicks) {
     switchTab('myteam');
   } else if (locked && !hasPicks) {
-    switchTab('live');
+    switchTab('standings');
   } else {
     switchTab('pick');
   }
@@ -712,9 +675,12 @@ function renderPickTab() {
   const firstKO = getFirstKickoff();
   const now = new Date();
   const submitted = hasSubmitted();
+  const allPicked = fixtures.length > 0 && fixtures.every(f => selections[f.id]);
   let subText = '';
 
-  if (!submitted) {
+  if (allPicked) {
+    subText = 'All picks in \u2713 \u2014 change any pick until its match kicks off';
+  } else if (!submitted) {
     if (!firstKO) {
       // All matches already started, no scheduled fixtures left
       subText = '\uD83D\uDD12 Deadline passed \u2014 all matches started';
@@ -722,16 +688,54 @@ function renderPickTab() {
       subText = '\uD83D\uDD12 Deadline passed \u2014 picks are closed';
     } else {
       const koStr = firstKO.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' \u00B7 ' + firstKO.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
-      subText = 'Submit before ' + koStr;
+      subText = 'Picks save instantly \u00B7 deadline ' + koStr;
     }
   } else {
-    subText = 'Submitted \u2713 \u2014 change picks until each match kicks off';
+    subText = 'Saved \u2713 \u2014 picks lock at each match kickoff';
   }
   document.getElementById('pick-gw-sub').textContent = subText;
 
+  renderSortBar();
   renderMatchBlocks();
   renderStrip();
 }
+
+// Global sort bar: one control for every match block; hidden while no stats exist (early season)
+function renderSortBar() {
+  const bar = document.getElementById('pick-sort-bar');
+  if (!bar) return;
+  if (statsMaxRound === 0) {
+    bar.style.display = 'none';
+    sortMode = 'all';
+    return;
+  }
+  const modes = [['avgrank','Avg Rank'],['form','Form'],['goats','GOAT'],['all','Squad']];
+  bar.innerHTML = '<span class="sort-bar-label">Sort</span>' + modes.map(function(m) {
+    return '<div class="pos-tab' + (sortMode === m[0] ? ' active' : '') + '" onclick="setSort(\'' + m[0] + '\')">' + m[1] + '</div>';
+  }).join('');
+  bar.style.display = '';
+  positionSortBar();
+}
+
+function setSort(mode) {
+  sortMode = mode;
+  renderSortBar();
+  fixtures.forEach(function(f) {
+    if (document.getElementById('match-' + f.id)) sortMatch(f.id, mode);
+  });
+  if (changingFixtureId && document.getElementById('mt-match-' + changingFixtureId)) {
+    sortMatch('mt-match-' + changingFixtureId, mode, null, true);
+  }
+}
+
+// Sticky offset = nav height + tabs height (both vary with breakpoint/fullscreen)
+function positionSortBar() {
+  const bar = document.getElementById('pick-sort-bar');
+  const nav = document.querySelector('.nav');
+  const tabs = document.querySelector('.tabs');
+  if (bar && nav && tabs) bar.style.top = (nav.offsetHeight + tabs.offsetHeight) + 'px';
+}
+window.addEventListener('resize', positionSortBar);
 
 function renderMatchBlocks() {
   const container = document.getElementById('pick-matches');
@@ -800,25 +804,15 @@ function renderMatchBlocks() {
       + '</div></div>'
       + '<div>' + badgeHtml + lockedHtml + '</div>'
       + '</div>'
-      + '<div class="pos-tabs">'
-      + '<div class="pos-tab active" onclick="sortMatch(' + f.id + ',\'avgrank\',this)">Avg Rank</div>'
-      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'form\',this)">Form</div>'
-      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'goats\',this)">GOAT</div>'
-      + '<div class="pos-tab" onclick="sortMatch(' + f.id + ',\'all\',this)">All</div>'
-      + '</div>'
       + '<div class="player-row-outer"><div class="player-row">' + cards + '</div></div>'
       + '</div>';
   }
 
   container.innerHTML = html;
 
-  // Default sort: Avg Rank
+  // Apply the global sort to every block
   fixtures.forEach(function(f) {
-    var block = document.getElementById('match-' + f.id);
-    if (block) {
-      var tab = block.querySelector('.pos-tab');
-      if (tab) sortMatch(f.id, 'avgrank', tab);
-    }
+    if (document.getElementById('match-' + f.id)) sortMatch(f.id, sortMode);
   });
 }
 
@@ -844,7 +838,13 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
 
   const matchBlock = document.getElementById('match-' + fixtureId);
   const currentSel = selections[fixtureId];
-  const isDeselect = currentSel && currentSel.element_id === elementId;
+
+  // Re-tapping your own pick is a no-op: switching = tap another player.
+  // (A silent toggle-off used to delete the saved pick on a fat-thumb tap.)
+  if (currentSel && currentSel.element_id === elementId) {
+    showToast('Picked — tap another player to change');
+    return;
+  }
 
   // Deselect all in this match
   matchBlock.querySelectorAll('.phex-card').forEach(c => {
@@ -853,19 +853,6 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
   });
 
   const badge = matchBlock.querySelector('.match-header > div:last-child');
-
-  if (isDeselect) {
-    // Toggle off — clear selection
-    delete selections[fixtureId];
-    badge.innerHTML = '';
-    renderStrip();
-
-    // If already submitted, delete the pick from DB
-    if (hasSubmitted() && userPicks[fixtureId]) {
-      deleteSinglePick(fixtureId);
-    }
-    return;
-  }
 
   // Select this card
   cardEl.classList.add('selected');
@@ -880,10 +867,8 @@ function selectPlayer(fixtureId, elementId, cardEl, locked) {
   selections[fixtureId] = { element_id: elementId, code, name, img };
   renderStrip();
 
-  // Auto-save if user already submitted picks (Phase 2)
-  if (hasSubmitted()) {
-    saveSinglePick(fixtureId, elementId);
-  }
+  // Every tap saves immediately — nothing is lost at the deadline
+  saveSinglePick(fixtureId, elementId);
 }
 
 async function saveSinglePick(fixtureId, elementId) {
@@ -904,28 +889,15 @@ async function saveSinglePick(fixtureId, elementId) {
         gw: viewGW
       });
     }
-    // Update local state
+    // Update local state; the gold card + badge + strip tick are the confirmation
     await loadUserPicks();
-    showToast('Pick saved');
   } catch(e) {
     showToast('Error saving pick');
     console.error(e);
   }
 }
 
-async function deleteSinglePick(fixtureId) {
-  if (!currentUser || viewGW < activeGW) return;
-  const existing = userPicks[fixtureId];
-  if (!existing) return;
-  try {
-    await sb.from('picks').delete().eq('id', existing.id);
-    await loadUserPicks();
-    showToast('Pick removed');
-  } catch(e) {
-    showToast('Error removing pick');
-    console.error(e);
-  }
-}
+function celebratedKey() { return 'goat_celebrated_gw' + viewGW; }
 
 function renderStrip() {
   const slotsEl = document.getElementById('strip-slots');
@@ -934,40 +906,34 @@ function renderStrip() {
   let html = '';
   let count = 0;
 
+  // Tick hexes: filled = picked; tapping any tick scrolls to its match
   for (let i = 0; i < totalMatches; i++) {
     const fid = fixtures[i].id;
-    const sel = selections[fid];
-    if (sel) {
-      count++;
-      html += '<div class="strip-slot filled"><img src="' + sel.img + '" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div>';
-    } else {
-      html += '<div class="strip-slot"></div>';
-    }
+    if (selections[fid]) count++;
+    html += '<div class="strip-slot tick' + (selections[fid] ? ' filled' : '') + '" onclick="goToMatch(' + fid + ')"></div>';
   }
-
   slotsEl.innerHTML = html;
-  document.getElementById('strip-count').textContent = count + '/' + totalMatches;
 
   const submitted = hasSubmitted();
   const now = new Date();
   const firstKO = getFirstKickoff();
   const globalDeadlinePassed = !submitted && firstKO && now >= firstKO;
+  const celebrated = !!localStorage.getItem(celebratedKey());
 
-  if (submitted) {
-    // Phase 2: auto-save mode, hide submit button
-    submitBtn.style.display = 'none';
-  } else if (globalDeadlinePassed) {
+  submitBtn.style.display = '';
+  if (globalDeadlinePassed) {
     submitBtn.textContent = 'Closed';
     submitBtn.disabled = true;
-    submitBtn.style.display = '';
   } else if (count < totalMatches) {
-    submitBtn.style.display = '';
-    submitBtn.textContent = count === 0 ? 'Submit' : count + '/' + totalMatches + ' \u2014 pick all';
+    // Picks are already saved \u2014 the button is a progress meter until the team is full
+    submitBtn.textContent = count + '/' + totalMatches;
     submitBtn.disabled = true;
-  } else {
-    submitBtn.style.display = '';
+  } else if (!celebrated) {
     submitBtn.textContent = 'Submit';
     submitBtn.disabled = false;
+  } else {
+    submitBtn.textContent = '\u2713 ' + count + '/' + totalMatches;
+    submitBtn.disabled = true;
   }
 }
 
@@ -1010,23 +976,38 @@ async function submitPicks() {
 
     // Reload picks
     await loadUserPicks();
-    showToast('Picks saved!');
-    // Re-render to switch to Phase 2 (auto-save mode)
+    localStorage.setItem(celebratedKey(), '1');
     renderPickTab();
     renderMyTeam();
+    celebrateSubmit();
   } catch(e) {
     showToast('Error saving picks');
     console.error(e);
+    btn.disabled = false;
+    btn.textContent = 'Submit';
   }
+}
 
-  btn.disabled = false;
-  btn.textContent = 'Submit';
+// Peak-end: a short gold moment instead of a vanishing button
+function celebrateSubmit() {
+  const strip = document.getElementById('team-strip');
+  if (strip) {
+    strip.classList.add('celebrate');
+    setTimeout(function() { strip.classList.remove('celebrate'); }, 1600);
+  }
+  const firstKO = getFirstKickoff();
+  const when = firstKO
+    ? firstKO.toLocaleDateString('en-GB', {weekday:'short'}) + ' ' + firstKO.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'})
+    : '';
+  showToast('🐐 ' + fixtures.length + ' GOATs locked in' + (when ? ' — first match ' + when : ''));
 }
 
 function sortMatch(fixtureId, mode, tabEl, useRawId) {
   const matchBlock = document.getElementById(useRawId ? fixtureId : 'match-' + fixtureId);
-  matchBlock.querySelectorAll('.pos-tab').forEach(t => t.classList.remove('active'));
-  tabEl.classList.add('active');
+  if (tabEl) {
+    matchBlock.querySelectorAll('.pos-tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+  }
   const row = matchBlock.querySelector('.player-row');
   const cards = Array.from(row.querySelectorAll('.phex-card'));
   cards.forEach(c => c.classList.remove('hidden'));
@@ -1253,22 +1234,17 @@ function openChangePanel(fixtureId) {
     + '<div class="mt-cp-close" onclick="mtCancelChange()">&#x2715;</div>'
     + '</div>'
     + '<div class="match-block" id="mt-match-' + fixtureId + '">'
-    + '<div class="pos-tabs">'
-    + '<div class="pos-tab active" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'avgrank\',this,true)">Avg Rank</div>'
-    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'form\',this,true)">Form</div>'
-    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'goats\',this,true)">GOAT</div>'
-    + '<div class="pos-tab" onclick="sortMatch(\'mt-match-' + fixtureId + '\',\'all\',this,true)">All</div>'
-    + '</div>'
     + '<div class="player-row-outer"><div class="player-row">' + cards + '</div></div>'
     + '</div>';
 
   panel.classList.add('open');
+  sortMatch('mt-match-' + fixtureId, sortMode, null, true);
 
   // Scroll panel into view
   setTimeout(function() { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
 }
 
-function mtSelectPlayer(fixtureId, elementId, cardEl) {
+async function mtSelectPlayer(fixtureId, elementId, cardEl) {
   if (fixtureId !== changingFixtureId) return;
 
   // Deselect all in change panel
@@ -1282,24 +1258,10 @@ function mtSelectPlayer(fixtureId, elementId, cardEl) {
   cardEl.classList.add('selected');
   cardEl.querySelector('.phex-outer').classList.add('selected');
 
-  changeTempElementId = elementId;
-
-  // Update the mt2-card preview
-  const pl = players[elementId];
-  if (pl) {
-    const img = document.getElementById('mt-img-' + fixtureId);
-    if (img) { img.src = CDN + pl.code + '.png'; img.style.display = ''; }
-    const nameEl = document.getElementById('mt-name-' + fixtureId);
-    if (nameEl) nameEl.textContent = pl.short_name || pl.name;
-    const posEl = document.getElementById('mt-pos-' + fixtureId);
-    if (posEl) posEl.textContent = pl.position;
-  }
-}
-
-async function mtSaveChange() {
-  if (!changingFixtureId || !changeTempElementId) return;
-  if (changeTempElementId !== changeOrigElementId) {
-    await saveSinglePick(changingFixtureId, changeTempElementId);
+  // Tap = save (same instant-save as the Pick tab); ✕ just closes the panel
+  if (elementId !== changeOrigElementId) {
+    await saveSinglePick(fixtureId, elementId);
+    showToast('Pick changed');
   }
   mtClosePanel();
   renderMyTeam();
@@ -1307,18 +1269,6 @@ async function mtSaveChange() {
 
 function mtCancelChange() {
   if (!changingFixtureId) return;
-  // Revert card preview to original
-  if (changeOrigElementId) {
-    const pl = players[changeOrigElementId];
-    if (pl) {
-      const img = document.getElementById('mt-img-' + changingFixtureId);
-      if (img) { img.src = CDN + pl.code + '.png'; img.style.display = ''; }
-      const nameEl = document.getElementById('mt-name-' + changingFixtureId);
-      if (nameEl) nameEl.textContent = pl.short_name || pl.name;
-      const posEl = document.getElementById('mt-pos-' + changingFixtureId);
-      if (posEl) posEl.textContent = pl.position;
-    }
-  }
   mtClosePanel();
   renderMyTeam();
 }
@@ -1389,18 +1339,13 @@ function renderMyTeam() {
     const bpsDisplay = (!isLive && !isFt) ? '\u2013' : bpsVal;
     const canChange = !isMatchLocked(f);
     const isChanging = changingFixtureId === f.id;
+    // The whole card is the change target — no micro Save/Cancel buttons
     let actionHtml = '';
-    if (isChanging) {
-      actionHtml = '<div class="mt2-actions">'
-        + '<div class="mt2-save" onclick="mtSaveChange()">Save</div>'
-        + '<div class="mt2-cancel" onclick="mtCancelChange()">Cancel</div>'
-        + '</div>';
-    } else if (canChange) {
-      actionHtml = '<div class="mt2-change" onclick="openChangePanel(' + f.id + ')">Change</div>';
-    }
+    if (canChange) actionHtml = '<div class="mt2-change-hint">' + (isChanging ? 'Pick below' : 'Tap to change') + '</div>';
     const changingClass = isChanging ? ' changing' : '';
+    const tapAttr = canChange && !isChanging ? ' onclick="openChangePanel(' + f.id + ')"' : '';
 
-    html += '<div class="mt2-card' + cardClass + changingClass + '" id="mt-card-' + f.id + '">'
+    html += '<div class="mt2-card' + cardClass + changingClass + '" id="mt-card-' + f.id + '"' + tapAttr + '>'
       + '<div class="mt2-header">'
       + '<div class="mt2-match">' + f.home_short + ' v ' + f.away_short + '</div>'
       + '<div class="mt2-status' + statusClass + '">' + statusText + '</div>'
@@ -1534,14 +1479,14 @@ async function loadGWStandings(gw, content) {
     const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
     const nameCls = isMe ? ' me' : '';
     const rowCls = isMe ? ' class="my-row"' : '';
-    html += '<tr' + rowCls + '><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="link-name" onclick="openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'' + i + '\')">\u25BC</span></td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '</td></tr>';
+    html += '<tr' + (isMe ? ' class="my-row lb-row"' : ' class="lb-row"') + ' onclick="togglePicks(\'' + i + '\')"><td class="lb-rank">' + rank + '</td><td class="lb-name' + nameCls + '"><span class="link-name" onclick="event.stopPropagation();openManagerProfile(\'' + s.uid + '\')">' + medal + esc(s.name) + '</span>' + botLabel(s._profile) + '</td><td class="lb-motms">' + s.goats + '</td><td class="lb-pts">' + s.bps.toLocaleString() + '<span class="lb-chev">\u25BE</span></td></tr>';
     html += buildPicksRow(i, s.picks, gwFixtures || []);
   }
 
   if (myIdx >= 20) {
     const gap = myIdx - showCount;
     html += '<tr class="separator"><td colspan="4">\u00B7 \u00B7 \u00B7 ' + gap + ' entries \u00B7 \u00B7 \u00B7</td></tr>';
-    html += '<tr class="my-row"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="link-name" onclick="openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + ' <span class="lb-expand-btn" onclick="togglePicks(\'me\')">\u25BC</span></td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '</td></tr>';
+    html += '<tr class="my-row lb-row" onclick="togglePicks(\'me\')"><td class="lb-rank">' + myRank + '</td><td class="lb-name me"><span class="link-name" onclick="event.stopPropagation();openManagerProfile(\'' + myEntry.uid + '\')">' + esc(myEntry.name) + '</span>' + botLabel(myEntry._profile) + '</td><td class="lb-motms">' + myEntry.goats + '</td><td class="lb-pts">' + myEntry.bps.toLocaleString() + '<span class="lb-chev">\u25BE</span></td></tr>';
     html += buildPicksRow('me', myEntry.picks, gwFixtures || []);
   }
 
@@ -2217,7 +2162,11 @@ function togglePicks(rowId) {
   if (!row) return;
   var isOpen = row.style.display !== 'none';
   document.querySelectorAll('.lb-picks-row').forEach(r => { r.style.display = 'none'; });
-  if (!isOpen) row.style.display = '';
+  document.querySelectorAll('tr.lb-row.open').forEach(r => r.classList.remove('open'));
+  if (!isOpen) {
+    row.style.display = '';
+    if (row.previousElementSibling) row.previousElementSibling.classList.add('open');
+  }
 }
 
 function toggleMenu() {
@@ -2501,6 +2450,7 @@ async function boot() {
     if ((tg.platform === 'android' || tg.platform === 'ios') && tg.requestFullscreen && parseFloat(tg.version) >= 8) {
       tg.onEvent('fullscreenChanged', function() {
         document.body.classList.toggle('tma-fs', !!tg.isFullscreen);
+        positionSortBar();
       });
       try { tg.requestFullscreen(); } catch (e) {}
     }
