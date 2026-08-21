@@ -2,7 +2,15 @@
 // POST /api/bot-picks?secret=GOAT_NOTIFY_SECRET
 // Called by n8n every 30 min — checks which bots should submit picks based on hours_before
 
+const { applyStrategy } = require('../lib/bot-strategies');
+
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
+
+// Blend weight of last season's BPS/90 against this season's form. At GW1 the
+// prior is all we have; by GW6+ real BPS dominates. ponytail: one constant, not a
+// decay curve — tune it if bots look too stubborn in September.
+const PRIOR_WEIGHT = 4;
+
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -94,11 +102,14 @@ async function generateBotPicks() {
   const existingPicks = await sbSelect('picks', `gw=eq.${activeGW}&user_id=in.(${botIds})&select=user_id,fixture_id`);
   const existingSet = new Set(existingPicks.map(p => `${p.user_id}_${p.fixture_id}`));
 
-  // Filter bots: hours_before >= hoursToDeadline AND no existing picks
+  // Filter bots: it is their hour AND they are still missing at least one fixture.
+  // Per-fixture, not per-GW: fixtures unlock progressively, and a deleted pick must
+  // be regenerated without the bot's other picks blocking the whole gameweek.
+  const openFixtures = fixtures.filter(f => new Date(f.kickoff_time) > new Date());
   const botsToRun = bots.filter(b => {
     const hb = b.hours_before || 12;
-    const hasAnyPick = existingPicks.some(p => p.user_id === b.id);
-    return hoursToDeadline <= hb && !hasAnyPick;
+    const missing = openFixtures.some(f => !existingSet.has(`${b.id}_${f.id}`));
+    return hoursToDeadline <= hb && missing;
   });
 
   if (!botsToRun.length) {
@@ -161,7 +172,47 @@ async function generateBotPicks() {
       if (b3 > b2 && b2 > b1 && b1 > 0) streak = b3;
     }
 
-    playerStats[eid] = { avgRank: bayesAvg, formBps, goats, games: n, totalMinutes, streak };
+    playerStats[eid] = { avgRank: bayesAvg, formBps, goats, games: n, totalMinutes, streak,
+                         _rankSum: rankSum, _n: n, _formBpsSum: formBpsSum,
+                         priorBps90: 0, priorMinutes: 0 };
+  }
+
+  // === Last season's prior ===
+  // Without it every strategy is blind until ~GW6 (and totally blind at GW1, which
+  // is how 8 of 10 bots ended up on Coventry in the opener). See populate-prior.js.
+  const priors = await sbSelect('player_prior', 'select=element_id,prior_bps90,prior_minutes');
+  const priorMap = {};
+  for (const r of priors) priorMap[r.element_id] = r;
+
+  // Percentile of BPS/90 among established players, used to seed the Bayesian rank
+  // mean per player instead of the flat 15 (which made every debutant look average).
+  const establishedBps90 = priors.filter(r => r.prior_minutes >= 450).map(r => Number(r.prior_bps90)).sort((a, b) => a - b);
+  const pctOf = (v) => {
+    if (!establishedBps90.length) return 0.5;
+    let lo = 0;
+    while (lo < establishedBps90.length && establishedBps90[lo] < v) lo++;
+    return lo / establishedBps90.length;
+  };
+
+  for (const p of players) {
+    const eid = p.element_id;
+    const pr = priorMap[eid];
+    const bps90 = pr ? Number(pr.prior_bps90) || 0 : 0;
+    const priorMinutes = pr ? pr.prior_minutes || 0 : 0;
+    if (!playerStats[eid]) {
+      playerStats[eid] = { avgRank: 15, formBps: 0, goats: 0, games: 0, totalMinutes: 0, streak: 0,
+                           _rankSum: 0, _n: 0, _formBpsSum: 0, priorBps90: 0, priorMinutes: 0 };
+    }
+    const st = playerStats[eid];
+    st.priorBps90 = bps90;
+    st.priorMinutes = priorMinutes;
+    if (priorMinutes > 0) {
+      // Form: prior counts as PRIOR_WEIGHT extra appearances at last season's rate.
+      st.formBps = (st._formBpsSum + PRIOR_WEIGHT * bps90) / (6 + PRIOR_WEIGHT);
+      // Rank: seed the Bayesian mean from where the player sat last season.
+      const seed = Math.min(30, Math.max(1, 1 + 29 * (1 - pctOf(bps90))));
+      st.avgRank = (C * seed + st._rankSum) / (C + st._n);
+    }
   }
 
   // Get FPL availability data (chance_of_playing)
@@ -175,6 +226,20 @@ async function generateBotPicks() {
       }
     }
   } catch (e) { console.warn('FPL availability fetch failed'); }
+
+  // === RotoWire predicted lineups (reuses the endpoint notify.js already consumes) ===
+  // Keyed "homeFplTeamId-awayFplTeamId"; GOAT team_ids ARE FPL team ids.
+  let lineups = {};
+  try {
+    const lr = await fetch('https://goatapp.club/api/lineups');
+    if (lr.ok) {
+      const ld = await lr.json();
+      if (!ld.error) lineups = ld;
+    }
+  } catch (e) { console.warn('Lineups fetch failed:', e.message); }
+
+  // === Bookmaker 1X2 → per-team weight ===
+  const teamWeights = await fetchTeamWeights(fixtures);
 
   // Get existing picks from all users for contrarian strategy
   const allUserPicks = await sbSelect('picks', `gw=eq.${activeGW}&select=element_id,fixture_id`);
@@ -191,13 +256,25 @@ async function generateBotPicks() {
   // 6. Generate picks per bot
   const allNewPicks = [];
   const botResults = [];
+  const degraded = [];
+
+  const startersByFixture = {};
+  for (const f of fixtures) {
+    const side = lineups[`${f.home_team_id}-${f.away_team_id}`];
+    if (!side) continue;
+    const ids = [...(side.home || []), ...(side.away || [])]
+      .filter(pl => pl.status === 'starter')
+      .map(pl => pl.fpl_id);
+    if (ids.length) startersByFixture[f.id] = new Set(ids);
+  }
 
   for (const bot of botsToRun) {
     const picks = [];
 
     for (const fixture of fixtures) {
-      // Skip locked fixtures
+      // Skip locked fixtures and ones this bot already picked
       if (fixture.status !== 'scheduled' || new Date(fixture.kickoff_time) <= now) continue;
+      if (existingSet.has(`${bot.id}_${fixture.id}`)) continue;
 
       // Get available players for this fixture (both teams)
       const matchPlayers = players.filter(p =>
@@ -213,8 +290,12 @@ async function generateBotPicks() {
       if (!available.length) continue;
 
       // Apply strategy
-      const pick = applyStrategy(bot.bot_strategy || 'form', available, fixture, playerStats, pickCounts);
+      const pick = applyStrategy(bot.bot_strategy || 'form', available, fixture, playerStats, pickCounts, {
+        starters: startersByFixture[fixture.id] || null,
+        teamWeightHome: teamWeights[fixture.id] ?? null,
+      });
       if (pick) {
+        if (pick.__degraded) degraded.push(`${bot.team_name} @ fixture ${fixture.id}`);
         picks.push({
           id: crypto.randomUUID(),
           user_id: bot.id,
@@ -240,125 +321,84 @@ async function generateBotPicks() {
     }
   }
 
+  // Loud fallback: a bot that found no ranking signal at all picked a coin flip.
+  // This used to happen silently — the only symptom was odd picks in the UI.
+  if (degraded.length) {
+    console.error(`BOT DEGRADED to random for ${degraded.length} picks:`, degraded.join('; '));
+    await alertAdmin(`\u26a0\ufe0f GOAT bots: ${degraded.length} \u043f\u0456\u043a\u0456\u0432 \u0437\u0440\u043e\u0431\u043b\u0435\u043d\u043e \u0420\u0410\u041d\u0414\u041e\u041c\u041e\u041c (\u043d\u0435\u043c\u0430\u0454 \u043d\u0456 \u0456\u0441\u0442\u043e\u0440\u0456\u0457, \u043d\u0456 \u043f\u0440\u0430\u0439\u043e\u0440\u0430) \u2014 GW${activeGW}. \u041f\u0435\u0440\u0435\u0432\u0456\u0440 player_prior / player_history.`);
+  }
+
   return {
     message: `Generated picks for ${botResults.length} bots`,
     bots: botResults,
     hoursToDeadline: hoursToDeadline.toFixed(1),
+    lineupsUsed: Object.keys(startersByFixture).length,
+    oddsUsed: Object.keys(teamWeights).length,
+    degraded: degraded.length,
   };
 }
 
-// === Strategy implementations ===
+async function alertAdmin(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  const chat = process.env.GOAT_ADMIN_CHAT_ID || '292048';
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text }),
+    });
+  } catch (e) { console.warn('Admin alert failed:', e.message); }
+}
 
-function applyStrategy(strategy, available, fixture, playerStats, pickCounts) {
-  // Enrich with stats
-  const enriched = available.map(p => ({
-    ...p,
-    stats: playerStats[p.element_id] || { avgRank: 15, formBps: 0, goats: 0, games: 0, totalMinutes: 0, streak: 0 },
-  }));
+// === Bookmaker odds → team weight ===
 
-  // Filter out players with 0 games (never played)
-  const played = enriched.filter(p => p.stats.games > 0);
-  if (!played.length) return randomPick(enriched);
-
-  let candidates;
-
-  switch (strategy) {
-    case 'form':
-      candidates = topN(played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-
-    case 'goat':
-      candidates = topN(played, 3, (a, b) => b.stats.goats - a.stats.goats);
-      break;
-
-    case 'rank':
-      candidates = topN(played, 3, (a, b) => a.stats.avgRank - b.stats.avgRank);
-      break;
-
-    case 'home': {
-      const home = played.filter(p => p.team_id === fixture.home_team_id);
-      candidates = topN(home.length ? home : played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-    }
-
-    case 'away': {
-      const away = played.filter(p => p.team_id === fixture.away_team_id);
-      candidates = topN(away.length ? away : played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-    }
-
-    case 'streak': {
-      const streakers = played.filter(p => p.stats.streak > 0);
-      if (streakers.length) {
-        candidates = topN(streakers, 3, (a, b) => b.stats.streak - a.stats.streak);
-      } else {
-        // Fallback: sort by form
-        candidates = topN(played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      }
-      break;
-    }
-
-    case 'ironman':
-      candidates = topN(played, 3, (a, b) => b.stats.totalMinutes - a.stats.totalMinutes);
-      break;
-
-    case 'contrarian': {
-      const top5 = topN(played, 5, (a, b) => b.stats.formBps - a.stats.formBps);
-      const fixPicks = pickCounts[fixture.id] || {};
-      const unpicked = top5.filter(p => !fixPicks[p.element_id]);
-      candidates = unpicked.length ? unpicked : top5;
-      break;
-    }
-
-    case 'combo': {
-      // Weighted score: form*0.4 + goats*0.3 + rank_score*0.3
-      const maxForm = Math.max(...played.map(p => p.stats.formBps), 1);
-      const maxGoats = Math.max(...played.map(p => p.stats.goats), 1);
-      for (const p of played) {
-        const formNorm = p.stats.formBps / maxForm;
-        const goatNorm = p.stats.goats / maxGoats;
-        const rankNorm = 1 - (p.stats.avgRank / 30); // lower rank = better, normalize
-        p._comboScore = formNorm * 0.4 + goatNorm * 0.3 + Math.max(0, rankNorm) * 0.3;
-      }
-      candidates = topN(played, 3, (a, b) => b._comboScore - a._comboScore);
-      break;
-    }
-
-    case 'fwd_only': {
-      const fwds = played.filter(p => p.position === 'FWD');
-      candidates = topN(fwds.length ? fwds : played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-    }
-
-    case 'mid_only': {
-      const mids = played.filter(p => p.position === 'MID');
-      candidates = topN(mids.length ? mids : played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-    }
-
-    case 'def_only': {
-      const defs = played.filter(p => p.position === 'DEF' || p.position === 'GKP');
-      candidates = topN(defs.length ? defs : played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
-    }
-
-    case 'chaos':
-      return randomPick(available);
-
-    default:
-      // Unknown strategy — fallback to form
-      candidates = topN(played, 3, (a, b) => b.stats.formBps - a.stats.formBps);
-      break;
+// the-odds-api soccer_epl h2h (same source and free key ledap uses). Returns
+// { fixtureId: weightHome }, where weightHome is the de-vigged win probability of
+// the home side with the draw split evenly. Missing key or missing line => no tilt.
+async function fetchTeamWeights(fixtures) {
+  const key = process.env.THE_ODDS_API_KEY;
+  const out = {};
+  if (!key) {
+    console.warn('THE_ODDS_API_KEY not set — bots pick teams 50/50 instead of by odds');
+    return out;
   }
+  try {
+    const r = await fetch(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=${key}`);
+    if (!r.ok) { console.warn('Odds fetch failed:', r.status); return out; }
+    const events = await r.json();
 
-  return randomPick(candidates || played);
+    // FPL long names per team id, for matching against the bookmaker's names.
+    const teamName = {};
+    try {
+      const fr = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/');
+      if (fr.ok) for (const t of (await fr.json()).teams) teamName[t.id] = norm(t.name);
+    } catch (e) { /* fall through — no names, no match */ }
+
+    for (const f of fixtures) {
+      const hn = teamName[f.home_team_id], an = teamName[f.away_team_id];
+      if (!hn || !an) continue;
+      const ev = events.find(e => nameMatch(norm(e.home_team), hn) && nameMatch(norm(e.away_team), an));
+      if (!ev) continue;
+      const book = ev.bookmakers?.find(b => b.key === 'pinnacle') || ev.bookmakers?.[0];
+      const market = book?.markets?.find(m => m.key === 'h2h');
+      if (!market) continue;
+      const price = (name) => market.outcomes.find(o => norm(o.name) === norm(name))?.price;
+      const oh = price(ev.home_team), oa = price(ev.away_team), od = price('Draw');
+      if (!oh || !oa || !od) continue;
+      const inv = 1 / oh + 1 / oa + 1 / od;
+      const ph = (1 / oh) / inv, pd = (1 / od) / inv;
+      out[f.id] = ph + pd / 2; // draw split evenly between the sides
+    }
+  } catch (e) { console.warn('Odds error:', e.message); }
+  return out;
 }
 
-function topN(arr, n, compareFn) {
-  return [...arr].sort(compareFn).slice(0, n);
+function norm(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(fc|afc|and|&)\b/g, '').replace(/[^a-z]/g, '');
 }
 
-function randomPick(arr) {
-  if (!arr.length) return null;
-  return arr[Math.floor(Math.random() * arr.length)];
+function nameMatch(a, b) {
+  return a === b || a.includes(b) || b.includes(a);
 }

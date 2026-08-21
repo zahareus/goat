@@ -241,3 +241,84 @@ describe('applyStrategy', () => {
     });
   });
 });
+
+// === New: lineup gate, odds tilt, prior-only evidence ===
+
+describe('predicted-lineup gate', () => {
+  const fixture = makeFixture();
+  const players = [
+    makePlayer({ element_id: 1, team_id: 1 }),
+    makePlayer({ element_id: 2, team_id: 1 }),
+  ];
+  const stats = { 1: makeStats({ formBps: 10 }), 2: makeStats({ formBps: 90 }) };
+
+  it('only starters are eligible when an XI is known', () => {
+    const result = applyStrategy('form', players, fixture, stats, {}, { starters: new Set([1]) });
+    expect(result.element_id).toBe(1); // 2 has far better form but is benched
+  });
+
+  it('ignores the gate when it would empty the pool', () => {
+    const result = applyStrategy('form', players, fixture, stats, {}, { starters: new Set([999]) });
+    expect([1, 2]).toContain(result.element_id);
+  });
+});
+
+describe('odds tilt', () => {
+  const fixture = makeFixture({ home_team_id: 1, away_team_id: 2 });
+  const players = [
+    makePlayer({ element_id: 1, team_id: 1 }),
+    makePlayer({ element_id: 2, team_id: 2 }),
+  ];
+  const stats = { 1: makeStats(), 2: makeStats() };
+
+  it('routes to the home side when the coin lands below the home weight', () => {
+    const result = applyStrategy('form', players, fixture, stats, {}, { teamWeightHome: 0.75, rng: () => 0.1 });
+    expect(result.team_id).toBe(1);
+  });
+
+  it('routes to the away side when it lands above', () => {
+    const result = applyStrategy('form', players, fixture, stats, {}, { teamWeightHome: 0.75, rng: () => 0.9 });
+    expect(result.team_id).toBe(2);
+  });
+
+  it('a 3:1 favourite is picked about 3x as often', () => {
+    let home = 0;
+    for (let i = 0; i < 1000; i++) {
+      const r = applyStrategy('form', players, fixture, stats, {}, { teamWeightHome: 0.75 });
+      if (r.team_id === 1) home++;
+    }
+    expect(home).toBeGreaterThan(700);
+    expect(home).toBeLessThan(800);
+  });
+
+  it('does not override home/away strategies', () => {
+    const r = applyStrategy('home', players, fixture, stats, {}, { teamWeightHome: 0.01, rng: () => 0.99 });
+    expect(r.team_id).toBe(1);
+  });
+});
+
+describe('prior as evidence', () => {
+  const fixture = makeFixture();
+  const players = [
+    makePlayer({ element_id: 1, team_id: 1 }),
+    makePlayer({ element_id: 2, team_id: 1 }),
+    makePlayer({ element_id: 3, team_id: 1 }),
+  ];
+
+  it('ranks by last season when this season has no games', () => {
+    const stats = {
+      1: { ...makeStats({ games: 0, totalMinutes: 0, formBps: 0 }), priorBps90: 30, priorMinutes: 2000 },
+      2: { ...makeStats({ games: 0, totalMinutes: 0, formBps: 0 }), priorBps90: 5, priorMinutes: 2000 },
+      3: { ...makeStats({ games: 0, totalMinutes: 0, formBps: 0 }), priorBps90: 0, priorMinutes: 0 },
+    };
+    // Ties on formBps are broken by priorBps90; the debutant (3) is not evidence.
+    const result = applyStrategy('form', players, fixture, stats, {});
+    expect([1, 2]).toContain(result.element_id);
+    expect(result.__degraded).toBeUndefined();
+  });
+
+  it('flags the pick as degraded when nobody has any evidence', () => {
+    const result = applyStrategy('form', players, fixture, {}, {});
+    expect(result.__degraded).toBe('no-evidence');
+  });
+});
