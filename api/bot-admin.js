@@ -9,19 +9,17 @@ function env(name) {
   return (process.env[name] || '').trim();
 }
 
-// Picks open when the previous gameweek's last match starts — consistently 96h
-// before the next round's first kickoff.
-const PICK_WINDOW_HOURS = 96;
-const BOT_LAST_CALL_HOURS = 3;
-
-// When a bot submits, as hours before the first kickoff. Arrivals are dense right
-// after picks open and thin out towards the deadline, so anyone opening the app a
-// few hours before kickoff already finds a full field waiting. Nothing lands later
-// than the last call — a bot appearing mid-round defeats the point of having bots.
-function rollHoursBefore() {
+// Where in the pick window this bot submits, as a fraction: 0 = the moment picks
+// open, 1 = last call (3h before the first kickoff). A fraction rather than a fixed
+// number of hours because the gap between rounds is not constant — a midweek round
+// can open a day before kickoff, an international break ten days.
+//
+// Squaring a uniform draw crowds the results near 0: most bots land soon after picks
+// open and arrivals thin out afterwards, so a player showing up a few hours before
+// kickoff finds a full field.
+function rollPickSlot() {
   const u = Math.random();
-  const span = PICK_WINDOW_HOURS - BOT_LAST_CALL_HOURS;
-  return Math.max(BOT_LAST_CALL_HOURS, Math.round(BOT_LAST_CALL_HOURS + span * (1 - u * u)));
+  return Math.round(u * u * 1000) / 1000;
 }
 
 module.exports = async function handler(req, res) {
@@ -102,7 +100,7 @@ async function sbUpdate(table, query, body) {
 
 async function listBots() {
   const bots = await sbSelect('profiles',
-    'is_bot=eq.true&select=id,team_name,bot_strategy,hours_before,bot_active,created_at&order=created_at.asc'
+    'is_bot=eq.true&select=id,team_name,bot_strategy,pick_slot,bot_active,created_at&order=created_at.asc'
   );
 
   // Count picks per bot per GW
@@ -126,7 +124,7 @@ async function createBot(body) {
   const { name, strategy } = body;
   if (!name || !strategy) throw new Error('Name and strategy required');
 
-  const hours_before = rollHoursBefore();
+  const pick_slot = rollPickSlot();
 
   // Generate unique email
   const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
@@ -156,14 +154,14 @@ async function createBot(body) {
     team_name: name,
     is_bot: true,
     bot_strategy: strategy,
-    hours_before,
+    pick_slot,
     bot_active: true,
     updated_at: new Date().toISOString(),
   });
 
   return {
     ok: true,
-    bot: { id: userId, team_name: name, bot_strategy: strategy, hours_before, bot_active: true, gws_played: 0 },
+    bot: { id: userId, team_name: name, bot_strategy: strategy, pick_slot, bot_active: true, gws_played: 0 },
   };
 }
 

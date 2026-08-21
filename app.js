@@ -2284,7 +2284,7 @@ async function adminLoadBots() {
   const stratLabels = {form:'Form',goat:'GOAT',rank:'Rank',home:'Home',away:'Away',streak:'Streak',ironman:'Iron Man',contrarian:'Contrarian',combo:'Balanced',fwd_only:'FWD Only',mid_only:'MID Only',def_only:'DEF Only',chaos:'Chaos'};
   list.innerHTML = bots.map(b =>
     '<details><summary class="bot-row" style="cursor:pointer;list-style:none">'
-    + '<span class="nm"><b>' + esc(b.team_name) + '</b> \u00B7 ' + (stratLabels[b.bot_strategy] || b.bot_strategy) + ' \u00B7 ' + b.hours_before + 'h</span>'
+    + '<span class="nm"><b>' + esc(b.team_name) + '</b> \u00B7 ' + (stratLabels[b.bot_strategy] || b.bot_strategy) + ' \u00B7 ' + slotLabel(b.pick_slot) + '</span>'
     + '<span class="gws">' + (b.gws_played || 0) + ' GW</span>'
     + (b.bot_active ? '<span class="chip chip-green">active</span>' : '<span class="chip chip-grey">paused</span>')
     + '</summary>'
@@ -2404,7 +2404,7 @@ async function adminCreateBot() {
   msgEl.className = 'admin-msg'; msgEl.textContent = 'Creating...';
   const res = await adminApiCall('create', { name, strategy });
   if (res && res.ok) {
-    msgEl.className = 'admin-msg ok'; msgEl.textContent = 'Created! Picks in ' + res.bot.hours_before + 'h before deadline.';
+    msgEl.className = 'admin-msg ok'; msgEl.textContent = 'Created! Submits ' + slotLabel(res.bot.pick_slot) + '.';
     nameEl.value = ''; stratEl.value = '';
     adminLoadBots();
     setTimeout(() => { msgEl.textContent = ''; }, 4000);
@@ -2546,6 +2546,16 @@ function renderEntrants(gw) {
     + '</button>';
 
   slots.forEach(el => { el.innerHTML = html; });
+}
+
+// Bots are placed by a fraction of the pick window, not a fixed hour — the gap
+// between rounds varies. Show it as plain English rather than a bare number.
+function slotLabel(slot) {
+  if (slot === null || slot === undefined) return 'legacy timing';
+  const pct = Math.round(Number(slot) * 100);
+  if (pct <= 5) return 'as picks open';
+  if (pct >= 95) return 'at last call';
+  return pct + '% into window';
 }
 
 function esc(str) {

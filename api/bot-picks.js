@@ -32,6 +32,48 @@ module.exports = async function handler(req, res) {
   }
 };
 
+// === When a bot submits ===
+//
+// Bots exist so a real player never opens a gameweek to an empty field, so they
+// have to be finished before that player shows up — and the room between rounds is
+// not constant. A midweek round can open a day before kickoff; a break can open ten
+// days before. So a bot's slot is a FRACTION of the actual window, not a fixed
+// number of hours: 0 = the moment picks open, 1 = last call.
+
+const BOT_LAST_CALL_HOURS = 3;
+
+// Picks for a round effectively open when the previous round's last match starts —
+// that is when this endpoint begins targeting it. No previous round (season opener)
+// falls back to a week.
+async function pickWindowStart(gw, deadline) {
+  const prev = await sbSelect('fixtures', `gw=eq.${gw - 1}&select=kickoff_time&order=kickoff_time.desc&limit=1`);
+  if (prev && prev.length) return new Date(prev[0].kickoff_time);
+  return new Date(deadline.getTime() - 7 * 24 * 3600 * 1000);
+}
+
+function botIsDue(bot, windowStart, deadline, now) {
+  const end = new Date(deadline.getTime() - BOT_LAST_CALL_HOURS * 3600 * 1000);
+  let start = windowStart;
+  // Tight turnaround (or a round that opened late): compress rather than skip, so
+  // everyone still lands before last call.
+  if (start >= end) start = new Date(end.getTime() - 3600 * 1000);
+
+  const slot = bot.pick_slot === null || bot.pick_slot === undefined
+    ? fallbackSlot(bot, start, end)
+    : Math.min(1, Math.max(0, Number(bot.pick_slot)));
+
+  const due = start.getTime() + slot * (end.getTime() - start.getTime());
+  return now.getTime() >= due;
+}
+
+// Bot predates the pick_slot column — place it by its old hours_before.
+function fallbackSlot(bot, start, end) {
+  const hb = bot.hours_before || 12;
+  const due = end.getTime() + (BOT_LAST_CALL_HOURS - hb) * 3600 * 1000;
+  const span = end.getTime() - start.getTime();
+  return span <= 0 ? 1 : Math.min(1, Math.max(0, (due - start.getTime()) / span));
+}
+
 // === Supabase REST helpers ===
 
 function sbHeaders() {
@@ -100,7 +142,7 @@ async function generateBotPicks() {
   const effectiveDeadline = deadline || firstKickoff;
 
   // 3. Get all bots
-  const bots = await sbSelect('profiles', 'is_bot=eq.true&bot_active=eq.true&select=id,team_name,bot_strategy,hours_before');
+  const bots = await sbSelect('profiles', 'is_bot=eq.true&bot_active=eq.true&select=id,team_name,bot_strategy,hours_before,pick_slot');
   if (!bots.length) return { message: 'No bots configured' };
 
   // 4. Check which bots should pick now
@@ -112,14 +154,14 @@ async function generateBotPicks() {
   const existingPicks = await sbSelect('picks', `gw=eq.${activeGW}&user_id=in.(${botIds})&select=user_id,fixture_id`);
   const existingSet = new Set(existingPicks.map(p => `${p.user_id}_${p.fixture_id}`));
 
-  // Filter bots: it is their hour AND they are still missing at least one fixture.
+  // Filter bots: their slot has come AND they are still missing at least one fixture.
   // Per-fixture, not per-GW: fixtures unlock progressively, and a deleted pick must
   // be regenerated without the bot's other picks blocking the whole gameweek.
   const openFixtures = fixtures.filter(f => new Date(f.kickoff_time) > new Date());
+  const windowStart = await pickWindowStart(activeGW, effectiveDeadline);
   const botsToRun = bots.filter(b => {
-    const hb = b.hours_before || 12;
     const missing = openFixtures.some(f => !existingSet.has(`${b.id}_${f.id}`));
-    return hoursToDeadline <= hb && missing;
+    return missing && botIsDue(b, windowStart, effectiveDeadline, now);
   });
 
   if (!botsToRun.length) {
@@ -449,3 +491,5 @@ function nameMatch(a, b) {
 
 // Exported for verification scripts and tests; the handler itself is the default export.
 module.exports.fetchTeamWeights = fetchTeamWeights;
+
+module.exports.botIsDue = botIsDue;
