@@ -62,6 +62,16 @@ async function sbInsert(table, rows) {
   return r;
 }
 
+async function sbUpsert(table, rows, onConflict) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: 'POST',
+    headers: { ...sbHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(rows),
+  });
+  if (!r.ok) throw new Error(`Upsert ${table} failed: ${r.status} ${await r.text()}`);
+  return r;
+}
+
 // === Main logic ===
 
 async function generateBotPicks() {
@@ -363,6 +373,19 @@ async function fetchTeamWeights(fixtures) {
     console.warn('THE_ODDS_API_KEY not set — bots pick teams 50/50 instead of by odds');
     return out;
   }
+
+  // ONE call per gameweek: the first bot to wake up prices the whole round and
+  // everyone else reads the cache. The free tier is 500 calls a MONTH and ledap
+  // shares it, so per-tick fetching is not an option. Lines inside a gameweek
+  // move too little to be worth refreshing.
+  const ids = fixtures.map(f => f.id).join(',');
+  const cached = await sbSelect('odds_cache', `fixture_id=in.(${ids})&select=fixture_id,weight_home`);
+  if (cached.length) {
+    for (const r of cached) out[r.fixture_id] = Number(r.weight_home);
+    console.log(`Odds from cache (${cached.length} fixtures)`);
+    return out;
+  }
+
   try {
     const r = await fetch(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=${key}`);
     if (!r.ok) { console.warn('Odds fetch failed:', r.status); return out; }
@@ -372,13 +395,13 @@ async function fetchTeamWeights(fixtures) {
     const teamName = {};
     try {
       const fr = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/');
-      if (fr.ok) for (const t of (await fr.json()).teams) teamName[t.id] = norm(t.name);
+      if (fr.ok) for (const t of (await fr.json()).teams) teamName[t.id] = teamKey(t.name);
     } catch (e) { /* fall through — no names, no match */ }
 
     for (const f of fixtures) {
       const hn = teamName[f.home_team_id], an = teamName[f.away_team_id];
       if (!hn || !an) continue;
-      const ev = events.find(e => nameMatch(norm(e.home_team), hn) && nameMatch(norm(e.away_team), an));
+      const ev = events.find(e => nameMatch(teamKey(e.home_team), hn) && nameMatch(teamKey(e.away_team), an));
       if (!ev) continue;
       const book = ev.bookmakers?.find(b => b.key === 'pinnacle') || ev.bookmakers?.[0];
       const market = book?.markets?.find(m => m.key === 'h2h');
@@ -390,15 +413,39 @@ async function fetchTeamWeights(fixtures) {
       const ph = (1 / oh) / inv, pd = (1 / od) / inv;
       out[f.id] = ph + pd / 2; // draw split evenly between the sides
     }
-  } catch (e) { console.warn('Odds error:', e.message); }
+
+    const rows = Object.entries(out).map(([fixture_id, weight_home]) => ({
+      fixture_id: Number(fixture_id), weight_home, fetched_at: new Date().toISOString(),
+    }));
+    if (rows.length) await sbUpsert('odds_cache', rows, 'fixture_id');
+  } catch (e) {
+    console.warn('Odds error:', e.message);
+    // Stale cache beats no odds at all — lines barely move inside a gameweek.
+    if (!Object.keys(out).length) for (const r of cached) out[r.fixture_id] = Number(r.weight_home);
+  }
   return out;
 }
+
+// FPL abbreviates ("Man Utd", "Spurs"), the bookmaker spells it out.
+const NAME_FIX = {
+  manutd: 'manchesterunited', mancity: 'manchestercity', spurs: 'tottenhamhotspur',
+  nottmforest: 'nottinghamforest', leeds: 'leedsunited', wolves: 'wolverhamptonwanderers',
+  newcastle: 'newcastleunited', ipswich: 'ipswichtown', hull: 'hullcity',
+};
 
 function norm(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\b(fc|afc|and|&)\b/g, '').replace(/[^a-z]/g, '');
 }
 
+function teamKey(s) {
+  const n = norm(s);
+  return NAME_FIX[n] || n;
+}
+
 function nameMatch(a, b) {
   return a === b || a.includes(b) || b.includes(a);
 }
+
+// Exported for verification scripts and tests; the handler itself is the default export.
+module.exports.fetchTeamWeights = fetchTeamWeights;
