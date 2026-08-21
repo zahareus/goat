@@ -417,14 +417,17 @@ async function loadGWData(gw) {
       if (cfgArr && cfgArr.length) gwConfigs[gw] = cfgArr[0];
     }
 
-    // Load fixtures + picks in parallel
-    await Promise.all([loadFixtures(), loadUserPicks()]);
+    // Load fixtures + picks in parallel. Entrants rides along so its row is painted
+    // with everything else — fetched afterwards it shifts all three tabs down 42px.
+    await Promise.all([loadFixtures(), loadUserPicks(), primeEntrants(gw)]);
     await loadResults();
 
     // Data loaded — unlock loading guard before tab state check
     gwLoading = false;
 
-    // Render all tabs
+    // Entrants first: it sits above the tab content, so inserting it afterwards
+    // pushes everything down. Painting it before the lists keeps CLS at baseline.
+    renderEntrants(gw);
     renderPickTab();
     renderLiveTab();
     renderMyTeam();
@@ -2161,6 +2164,8 @@ function switchTab(name, byUser) {
   if (name === 'live') renderLiveTab();
   if (name === 'myteam') { Promise.all([loadFixtures(), loadResults()]).then(() => renderMyTeam()); }
   if (name === 'standings') { loadStandings(viewGW); }
+  // Recount on tab entry, but no more than once a minute — the number moves slowly.
+  if (name === 'pick' || name === 'live' || name === 'myteam') refreshEntrants(viewGW);
 }
 
 function togglePicks(rowId) {
@@ -2434,6 +2439,113 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ===== ENTRANTS — "who is already in this gameweek" =====
+// Social proof on the pick / live / my-team screens: a row of faces plus a count,
+// tapping it opens the standings. Counts only managers who filled EVERY fixture —
+// a partial pick that gets undone would otherwise make the number go DOWN, which
+// reads as a bug to whoever is looking at it.
+
+let entrantsByGW = {};
+const ENTRANTS_TTL_MS = 60000;
+
+function entrantsSlots() {
+  return ['entrants-pick', 'entrants-live', 'entrants-myteam']
+    .map(id => document.getElementById(id)).filter(Boolean);
+}
+
+// Fetch only — used inside the initial parallel load, so nothing renders mid-paint.
+async function primeEntrants(gw) {
+  const cached = entrantsByGW[gw];
+  if (cached && Date.now() - cached.at < ENTRANTS_TTL_MS) return;
+  try {
+    const data = await fetchEntrants(gw);
+    data.at = Date.now();
+    entrantsByGW[gw] = data;
+  } catch (e) {
+    // Social proof is decoration — never let it break the screen.
+  }
+}
+
+async function refreshEntrants(gw) {
+  await primeEntrants(gw);
+  renderEntrants(gw);
+}
+
+async function fetchEntrants(gw) {
+  const [picksRes, fixturesRes] = await Promise.all([
+    sb.from('picks').select('user_id,fixture_id').eq('gw', gw),
+    sb.from('fixtures').select('id').eq('gw', gw)
+  ]);
+  const picks = picksRes.data || [];
+  const total = (fixturesRes.data || []).length;
+  if (!total || !picks.length) return { count: 0, faces: [] };
+
+  // Distinct fixtures per manager — a full squad means one pick in every match.
+  const byUser = {};
+  picks.forEach(p => {
+    if (!byUser[p.user_id]) byUser[p.user_id] = new Set();
+    byUser[p.user_id].add(p.fixture_id);
+  });
+  const complete = Object.keys(byUser).filter(uid => byUser[uid].size >= total);
+  if (!complete.length) return { count: 0, faces: [] };
+
+  const { data: profiles } = await sb.from('profiles')
+    .select('id, team_name, avatar_url, is_bot').in('id', complete);
+
+  // Real people with real photos lead, then people with initials, then bots.
+  const rank = p => (p.is_bot ? 2 : 0) + (p.avatar_url ? 0 : 1);
+  const ordered = (profiles || []).slice().sort((a, b) => rank(a) - rank(b));
+
+  return { count: complete.length, faces: ordered.slice(0, 5) };
+}
+
+// Telegram gives every avatar-less user a coloured circle; ours were all the same
+// grey. Palette is the muted position ramp from DESIGN.md — deterministic per user,
+// so a manager keeps their colour between sessions.
+const INITIAL_COLORS = ['#4a8fa0', '#7a9a4a', '#c25c3d', '#c9a227', '#8a7050', '#6b7f8c', '#8c6a8a'];
+
+function initialColor(seed) {
+  const str = String(seed);
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return INITIAL_COLORS[h % INITIAL_COLORS.length];
+}
+
+function renderEntrants(gw) {
+  const data = entrantsByGW[gw];
+  const slots = entrantsSlots();
+  if (!data || viewGW !== gw) return;
+
+  if (!data.count) {
+    // Keep the row's height — collapsing it would shift the whole screen up.
+    slots.forEach(el => {
+      el.innerHTML = '<span class="entrants ent-empty"><span class="ent-txt">Be the first in</span></span>';
+    });
+    return;
+  }
+
+  const faces = data.faces.map(p => {
+    const initial = esc((p.team_name || '?').charAt(0).toUpperCase());
+    const tint = ' style="background:' + initialColor(p.id || p.team_name || '') + '"';
+    const inner = p.avatar_url
+      ? '<img src="' + esc(p.avatar_url) + '" alt="" onerror="this.parentNode.innerHTML=\'<span class=&quot;ent-initial&quot; style=&quot;background:' + initialColor(p.id || p.team_name || '') + '&quot;>' + initial + '</span>\'">'
+      : '<span class="ent-initial"' + tint + '>' + initial + '</span>';
+    return '<span class="ent-face">' + inner + '</span>';
+  }).join('');
+
+  const rest = data.count - data.faces.length;
+  const more = rest > 0 ? '<span class="ent-face ent-more">+' + rest + '</span>' : '';
+  const label = data.count === 1 ? '<b>1</b> already in' : '<b>' + data.count + '</b> already in';
+
+  const aria = 'See the ' + data.count + ' managers already in this gameweek \u2014 opens standings';
+  const html = '<button class="entrants" aria-label="' + aria + '" onclick="switchTab(\'standings\',true)">'
+    + '<span class="ent-faces">' + faces + more + '</span>'
+    + '<span class="ent-txt">' + label + '</span>'
+    + '</button>';
+
+  slots.forEach(el => { el.innerHTML = html; });
 }
 
 function esc(str) {

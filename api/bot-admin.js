@@ -111,8 +111,10 @@ async function createBot(body) {
   const { name, strategy } = body;
   if (!name || !strategy) throw new Error('Name and strategy required');
 
-  // Random hours_before between 2 and 24
-  const hours_before = Math.floor(Math.random() * 23) + 2;
+  // Random hours_before between 5 and 24. The floor is deliberate: every bot must
+  // be in the standings BEFORE a real player arrives to pick, which is the whole
+  // point of having bots. Nothing submits once the round is under way.
+  const hours_before = Math.floor(Math.random() * 20) + 5;
 
   // Generate unique email
   const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
