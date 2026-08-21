@@ -9,6 +9,21 @@ function env(name) {
   return (process.env[name] || '').trim();
 }
 
+// Picks open when the previous gameweek's last match starts — consistently 96h
+// before the next round's first kickoff.
+const PICK_WINDOW_HOURS = 96;
+const BOT_LAST_CALL_HOURS = 3;
+
+// When a bot submits, as hours before the first kickoff. Arrivals are dense right
+// after picks open and thin out towards the deadline, so anyone opening the app a
+// few hours before kickoff already finds a full field waiting. Nothing lands later
+// than the last call — a bot appearing mid-round defeats the point of having bots.
+function rollHoursBefore() {
+  const u = Math.random();
+  const span = PICK_WINDOW_HOURS - BOT_LAST_CALL_HOURS;
+  return Math.max(BOT_LAST_CALL_HOURS, Math.round(BOT_LAST_CALL_HOURS + span * (1 - u * u)));
+}
+
 module.exports = async function handler(req, res) {
   // Verify admin via Supabase auth token
   const authHeader = req.headers.authorization;
@@ -111,10 +126,7 @@ async function createBot(body) {
   const { name, strategy } = body;
   if (!name || !strategy) throw new Error('Name and strategy required');
 
-  // Random hours_before between 5 and 24. The floor is deliberate: every bot must
-  // be in the standings BEFORE a real player arrives to pick, which is the whole
-  // point of having bots. Nothing submits once the round is under way.
-  const hours_before = Math.floor(Math.random() * 20) + 5;
+  const hours_before = rollHoursBefore();
 
   // Generate unique email
   const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
