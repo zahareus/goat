@@ -428,6 +428,7 @@ async function loadGWData(gw) {
     renderPickTab();
     renderLiveTab();
     renderMyTeam();
+    refreshEntrants(gw);
     loadStandings(viewGW);
     updateTabStates();
     autoSelectTab();
@@ -2161,6 +2162,8 @@ function switchTab(name, byUser) {
   if (name === 'live') renderLiveTab();
   if (name === 'myteam') { Promise.all([loadFixtures(), loadResults()]).then(() => renderMyTeam()); }
   if (name === 'standings') { loadStandings(viewGW); }
+  // Recount on tab entry, but no more than once a minute — the number moves slowly.
+  if (name === 'pick' || name === 'live' || name === 'myteam') refreshEntrants(viewGW);
 }
 
 function togglePicks(rowId) {
@@ -2434,6 +2437,91 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ===== ENTRANTS — "who is already in this gameweek" =====
+// Social proof on the pick / live / my-team screens: a row of faces plus a count,
+// tapping it opens the standings. Counts only managers who filled EVERY fixture —
+// a partial pick that gets undone would otherwise make the number go DOWN, which
+// reads as a bug to whoever is looking at it.
+
+let entrantsByGW = {};
+const ENTRANTS_TTL_MS = 60000;
+
+function entrantsSlots() {
+  return ['entrants-pick', 'entrants-live', 'entrants-myteam']
+    .map(id => document.getElementById(id)).filter(Boolean);
+}
+
+async function refreshEntrants(gw) {
+  const cached = entrantsByGW[gw];
+  if (cached && Date.now() - cached.at < ENTRANTS_TTL_MS) { renderEntrants(gw); return; }
+  try {
+    const data = await fetchEntrants(gw);
+    data.at = Date.now();
+    entrantsByGW[gw] = data;
+  } catch (e) {
+    return; // social proof is decoration — never let it break the screen
+  }
+  renderEntrants(gw);
+}
+
+async function fetchEntrants(gw) {
+  const [picksRes, fixturesRes] = await Promise.all([
+    sb.from('picks').select('user_id,fixture_id').eq('gw', gw),
+    sb.from('fixtures').select('id').eq('gw', gw)
+  ]);
+  const picks = picksRes.data || [];
+  const total = (fixturesRes.data || []).length;
+  if (!total || !picks.length) return { count: 0, faces: [] };
+
+  // Distinct fixtures per manager — a full squad means one pick in every match.
+  const byUser = {};
+  picks.forEach(p => {
+    if (!byUser[p.user_id]) byUser[p.user_id] = new Set();
+    byUser[p.user_id].add(p.fixture_id);
+  });
+  const complete = Object.keys(byUser).filter(uid => byUser[uid].size >= total);
+  if (!complete.length) return { count: 0, faces: [] };
+
+  const { data: profiles } = await sb.from('profiles')
+    .select('id, team_name, avatar_url, is_bot').in('id', complete);
+
+  // Real people with real photos lead, then people with initials, then bots.
+  const rank = p => (p.is_bot ? 2 : 0) + (p.avatar_url ? 0 : 1);
+  const ordered = (profiles || []).slice().sort((a, b) => rank(a) - rank(b));
+
+  return { count: complete.length, faces: ordered.slice(0, 5) };
+}
+
+function renderEntrants(gw) {
+  const data = entrantsByGW[gw];
+  const slots = entrantsSlots();
+  if (!data || viewGW !== gw) return;
+
+  if (!data.count) {
+    slots.forEach(el => { el.innerHTML = ''; });
+    return;
+  }
+
+  const faces = data.faces.map(p => {
+    const initial = esc((p.team_name || '?').charAt(0).toUpperCase());
+    const inner = p.avatar_url
+      ? '<img src="' + esc(p.avatar_url) + '" alt="" onerror="this.parentNode.innerHTML=\'<span class=&quot;ent-initial&quot;>' + initial + '</span>\'">'
+      : '<span class="ent-initial">' + initial + '</span>';
+    return '<span class="ent-face">' + inner + '</span>';
+  }).join('');
+
+  const rest = data.count - data.faces.length;
+  const more = rest > 0 ? '<span class="ent-face ent-more">+' + rest + '</span>' : '';
+  const label = data.count === 1 ? '<b>1</b> already in' : '<b>' + data.count + '</b> already in';
+
+  const html = '<button class="entrants" onclick="switchTab(\'standings\',true)">'
+    + '<span class="ent-faces">' + faces + more + '</span>'
+    + '<span class="ent-txt">' + label + '</span>'
+    + '</button>';
+
+  slots.forEach(el => { el.innerHTML = html; });
 }
 
 function esc(str) {

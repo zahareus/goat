@@ -765,3 +765,33 @@ tr.lb-row.open .lb-chev{transform:rotate(180deg)}
 .bot-row:last-child{border-bottom:none}
 .bot-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bot-row .gws{font-size:11px;color:var(--text-mute);white-space:nowrap}
+
+/* ===== ENTRANTS — who is already in this gameweek ===== */
+.entrants-slot:empty{display:none}
+.entrants{
+  display:inline-flex;align-items:center;gap:8px;
+  background:none;border:none;font-family:inherit;cursor:pointer;
+  padding:8px 4px;margin:0 auto;
+}
+.entrants-slot{text-align:center}
+#entrants-live .entrants,#entrants-myteam .entrants{padding:10px 4px}
+.ent-faces{display:flex;flex-shrink:0}
+.ent-face{
+  width:22px;height:22px;border-radius:50%;overflow:hidden;flex-shrink:0;
+  border:1.5px solid var(--ink-base);margin-left:-7px;background:var(--ink-3);
+  display:flex;align-items:center;justify-content:center;
+}
+.ent-face:first-child{margin-left:0}
+.ent-face img{width:100%;height:100%;object-fit:cover;display:block}
+.ent-initial{
+  width:100%;height:100%;background:var(--border);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;line-height:1;
+}
+.ent-more{
+  background:var(--ink-3);color:var(--accent);font-size:8.5px;font-weight:900;
+  letter-spacing:-0.2px;
+}
+.ent-txt{font-size:10px;color:var(--text-mute);letter-spacing:0.5px;white-space:nowrap}
+.ent-txt b{color:var(--accent);font-weight:700}
+.entrants:hover .ent-txt{color:var(--text-sub)}
