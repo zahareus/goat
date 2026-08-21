@@ -2501,6 +2501,18 @@ async function fetchEntrants(gw) {
   return { count: complete.length, faces: ordered.slice(0, 5) };
 }
 
+// Telegram gives every avatar-less user a coloured circle; ours were all the same
+// grey. Palette is the muted position ramp from DESIGN.md — deterministic per user,
+// so a manager keeps their colour between sessions.
+const INITIAL_COLORS = ['#4a8fa0', '#7a9a4a', '#c25c3d', '#c9a227', '#8a7050', '#6b7f8c', '#8c6a8a'];
+
+function initialColor(seed) {
+  const str = String(seed);
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return INITIAL_COLORS[h % INITIAL_COLORS.length];
+}
+
 function renderEntrants(gw) {
   const data = entrantsByGW[gw];
   const slots = entrantsSlots();
@@ -2516,9 +2528,10 @@ function renderEntrants(gw) {
 
   const faces = data.faces.map(p => {
     const initial = esc((p.team_name || '?').charAt(0).toUpperCase());
+    const tint = ' style="background:' + initialColor(p.id || p.team_name || '') + '"';
     const inner = p.avatar_url
-      ? '<img src="' + esc(p.avatar_url) + '" alt="" onerror="this.parentNode.innerHTML=\'<span class=&quot;ent-initial&quot;>' + initial + '</span>\'">'
-      : '<span class="ent-initial">' + initial + '</span>';
+      ? '<img src="' + esc(p.avatar_url) + '" alt="" onerror="this.parentNode.innerHTML=\'<span class=&quot;ent-initial&quot; style=&quot;background:' + initialColor(p.id || p.team_name || '') + '&quot;>' + initial + '</span>\'">'
+      : '<span class="ent-initial"' + tint + '>' + initial + '</span>';
     return '<span class="ent-face">' + inner + '</span>';
   }).join('');
 
