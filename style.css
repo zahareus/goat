@@ -767,13 +767,16 @@ tr.lb-row.open .lb-chev{transform:rotate(180deg)}
 .bot-row .gws{font-size:11px;color:var(--text-mute);white-space:nowrap}
 
 /* ===== ENTRANTS — who is already in this gameweek ===== */
-.entrants-slot:empty{display:none}
+.entrants-slot{min-height:42px}
 .entrants{
   display:inline-flex;align-items:center;gap:8px;
   background:none;border:none;font-family:inherit;cursor:pointer;
   padding:8px 4px;margin:0 auto;
 }
 .entrants-slot{text-align:center}
+.ent-skeleton{opacity:.35}
+.ent-skeleton .ent-face{background:var(--ink-3)}
+.entrants.ent-empty{cursor:default}
 #entrants-live .entrants,#entrants-myteam .entrants{padding:10px 4px}
 .ent-faces{display:flex;flex-shrink:0}
 .ent-face{

@@ -417,18 +417,20 @@ async function loadGWData(gw) {
       if (cfgArr && cfgArr.length) gwConfigs[gw] = cfgArr[0];
     }
 
-    // Load fixtures + picks in parallel
-    await Promise.all([loadFixtures(), loadUserPicks()]);
+    // Load fixtures + picks in parallel. Entrants rides along so its row is painted
+    // with everything else — fetched afterwards it shifts all three tabs down 42px.
+    await Promise.all([loadFixtures(), loadUserPicks(), primeEntrants(gw)]);
     await loadResults();
 
     // Data loaded — unlock loading guard before tab state check
     gwLoading = false;
 
-    // Render all tabs
+    // Entrants first: it sits above the tab content, so inserting it afterwards
+    // pushes everything down. Painting it before the lists keeps CLS at baseline.
+    renderEntrants(gw);
     renderPickTab();
     renderLiveTab();
     renderMyTeam();
-    refreshEntrants(gw);
     loadStandings(viewGW);
     updateTabStates();
     autoSelectTab();
@@ -2453,16 +2455,21 @@ function entrantsSlots() {
     .map(id => document.getElementById(id)).filter(Boolean);
 }
 
-async function refreshEntrants(gw) {
+// Fetch only — used inside the initial parallel load, so nothing renders mid-paint.
+async function primeEntrants(gw) {
   const cached = entrantsByGW[gw];
-  if (cached && Date.now() - cached.at < ENTRANTS_TTL_MS) { renderEntrants(gw); return; }
+  if (cached && Date.now() - cached.at < ENTRANTS_TTL_MS) return;
   try {
     const data = await fetchEntrants(gw);
     data.at = Date.now();
     entrantsByGW[gw] = data;
   } catch (e) {
-    return; // social proof is decoration — never let it break the screen
+    // Social proof is decoration — never let it break the screen.
   }
+}
+
+async function refreshEntrants(gw) {
+  await primeEntrants(gw);
   renderEntrants(gw);
 }
 
@@ -2500,7 +2507,10 @@ function renderEntrants(gw) {
   if (!data || viewGW !== gw) return;
 
   if (!data.count) {
-    slots.forEach(el => { el.innerHTML = ''; });
+    // Keep the row's height — collapsing it would shift the whole screen up.
+    slots.forEach(el => {
+      el.innerHTML = '<span class="entrants ent-empty"><span class="ent-txt">Be the first in</span></span>';
+    });
     return;
   }
 
@@ -2516,7 +2526,8 @@ function renderEntrants(gw) {
   const more = rest > 0 ? '<span class="ent-face ent-more">+' + rest + '</span>' : '';
   const label = data.count === 1 ? '<b>1</b> already in' : '<b>' + data.count + '</b> already in';
 
-  const html = '<button class="entrants" onclick="switchTab(\'standings\',true)">'
+  const aria = 'See the ' + data.count + ' managers already in this gameweek \u2014 opens standings';
+  const html = '<button class="entrants" aria-label="' + aria + '" onclick="switchTab(\'standings\',true)">'
     + '<span class="ent-faces">' + faces + more + '</span>'
     + '<span class="ent-txt">' + label + '</span>'
     + '</button>';
