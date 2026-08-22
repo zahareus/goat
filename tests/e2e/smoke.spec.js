@@ -30,6 +30,26 @@ test.describe('GOAT Smoke Tests', () => {
     expect(count).toBeGreaterThan(0);
   });
 
+  // Фото гравців віддаються як .webp з Supabase Storage (перехід 22.08.2026 —
+  // PNG по 273 KB вибирали квоту egress). Промах по файлу маскується
+  // onerror-плейсхолдером, тобто зникнення всіх фото було б мовчазним.
+  test('player photos actually load, not just fall back to placeholder', async ({ page }) => {
+    await gotoWithoutTour(page, BASE_URL);
+    await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
+    await page.waitForSelector('img[src*="player-photos"]', { state: 'attached', timeout: 15000 });
+
+    const broken = await page.evaluate(async () => {
+      const imgs = [...document.querySelectorAll('img[src*="player-photos"]')];
+      await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => {
+        i.addEventListener('load', r, { once: true });
+        i.addEventListener('error', r, { once: true });
+      })));
+      return imgs.filter(i => i.naturalWidth === 0).map(i => i.src);
+    });
+
+    expect(broken, `порожні зображення: ${broken.slice(0, 3).join(', ')}`).toHaveLength(0);
+  });
+
   test('standings tab displays leaderboard', async ({ page }) => {
     await gotoWithoutTour(page, BASE_URL);
     await page.waitForSelector('.tab', { timeout: 10000 });

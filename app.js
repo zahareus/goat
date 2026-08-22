@@ -552,7 +552,7 @@ async function loadUserPicks() {
         element_id: pick.element_id,
         code: pl.code,
         name: pl.short_name || pl.name,
-        img: CDN + pl.code + '.png'
+        img: CDN + pl.code + '.webp'
       };
     }
   }
@@ -789,14 +789,14 @@ function renderMatchBlocks() {
       const avgR = ps.avgRank || 99;
       const formB = ps.formBps || 0;
       const goats = ps.goats || 0;
-      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
+      return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.webp" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
         + '<div class="phex-name-wrap">'
         + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + availHtml(p.element_id, f) + esc(p.short_name || p.name) + '</div>'
         + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
         + '</div>'
         + '<div class="phex-outer' + sc + '" onclick="selectPlayer(' + f.id + ',' + p.element_id + ',this.closest(\'.phex-card\'),' + (locked?'true':'false') + ')">'
         + '<div class="phex-inner">'
-        + '<img src="' + CDN + p.code + '.png" loading="' + (idx === 0 ? 'eager' : 'lazy') + '" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt="">'
+        + '<img src="' + CDN + p.code + '.webp" loading="' + (idx === 0 ? 'eager' : 'lazy') + '" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt="">'
         + '</div></div>'
         + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
         + '</div>';
@@ -1144,7 +1144,7 @@ function showLiveMatchContent(fixtureId) {
 
       html += '<div class="' + cls + '">'
         + '<div class="lv-hex-wrap">'
-        + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+        + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.webp" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
         + '<div class="lv-rank-badge">' + rank + '</div>'
         + '</div>'
         + '<div class="lv-name">' + esc(pl.short_name || pl.name) + '</div>'
@@ -1158,7 +1158,7 @@ function showLiveMatchContent(fixtureId) {
       if (pl) {
         html += '<div class="lv-card lv-dnp">'
           + '<div class="lv-hex-wrap">'
-          + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+          + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.webp" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
           + '<div class="lv-rank-badge">–</div>'
           + '</div>'
           + '<div class="lv-name">' + esc(pl.short_name || pl.name) + '</div>'
@@ -1174,7 +1174,7 @@ function showLiveMatchContent(fixtureId) {
     html += '<div class="live-strip-section"><div class="live-strip-wrap"><div class="live-strip">';
     html += '<div class="lv-card lv-dnp">'
       + '<div class="lv-hex-wrap">'
-      + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+      + '<div class="lv-hex-outer"><div class="lv-hex-inner"><img src="' + CDN + pl.code + '.webp" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
       + '<div class="lv-rank-badge">–</div>'
       + '</div>'
       + '<div class="lv-name">' + esc(pl.short_name || pl.name) + '</div>'
@@ -1222,14 +1222,14 @@ function openChangePanel(fixtureId) {
     const avgR = ps.avgRank || 99;
     const formB = ps.formBps || 0;
     const goats = ps.goats || 0;
-    return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.png" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
+    return '<div class="phex-card' + sc + '" data-orig-idx="' + ci + '" data-pos="' + (p.position||'') + '" data-eid="' + p.element_id + '" data-code="' + p.code + '" data-name="' + esc(p.short_name || p.name) + '" data-team="' + (p.team_short||'') + '" data-ph="' + CDN + p.code + '.webp" data-avgrank="' + avgR + '" data-form="' + formB + '" data-goats="' + goats + '">'
       + '<div class="phex-name-wrap">'
       + '<div class="phex-name" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">' + availHtml(p.element_id, f) + esc(p.short_name || p.name) + '</div>'
       + '<span class="phex-info-btn" onclick="event.stopPropagation();openProfileFromCard(this.closest(\'.phex-card\'))">i</span>'
       + '</div>'
       + '<div class="phex-outer' + sc + '" onclick="mtSelectPlayer(' + fixtureId + ',' + p.element_id + ',this.closest(\'.phex-card\'))">'
       + '<div class="phex-inner">'
-      + '<img src="' + CDN + p.code + '.png" loading="lazy" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt="">'
+      + '<img src="' + CDN + p.code + '.webp" loading="lazy" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt="">'
       + '</div></div>'
       + '<div class="phex-team-pos">' + (p.team_short||'') + ' \u00B7 ' + p.position + '</div>'
       + '</div>';
@@ -1359,7 +1359,7 @@ function renderMyTeam() {
       + '<div class="mt2-status' + statusClass + '">' + statusText + '</div>'
       + '</div>'
       + '<div class="mt2-hex-wrap">'
-      + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img id="mt-img-' + f.id + '" src="' + CDN + pl.code + '.png" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
+      + '<div class="mt2-hex-outer"><div class="mt2-hex-inner"><img id="mt-img-' + f.id + '" src="' + CDN + pl.code + '.webp" onerror="this.src=PLACEHOLDER_IMG;this.onerror=null" alt=""></div></div>'
       + '<div class="mt2-rank-badge">' + rank + '</div>'
       + '</div>'
       + '<div class="mt2-name" id="mt-name-' + f.id + '">' + availHtml(pl.element_id, f) + esc(pl.short_name || pl.name) + '</div>'

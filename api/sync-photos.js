@@ -38,7 +38,9 @@ module.exports = async function handler(req, res) {
     const existingSet = new Set((existing || []).map(f => f.name));
 
     // 3. Find players missing photos
-    const missing = players.filter(p => p.code && !existingSet.has(`${p.code}.png`));
+    // ponytail: ключ .webp — фронт просить саме його (app.js CDN + code + '.webp').
+    // Якщо звірятися з .png, нові гравці мовчки лишаються сірим плейсхолдером.
+    const missing = players.filter(p => p.code && !existingSet.has(`${p.code}.webp`));
 
     if (missing.length === 0) {
       return res.status(200).json({ message: 'All photos synced', total: players.length, existing: existingSet.size });
@@ -63,7 +65,13 @@ module.exports = async function handler(req, res) {
         const buffer = await photoRes.arrayBuffer();
         if (buffer.byteLength < 500) { skipped++; continue; } // placeholder image
 
-        const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p.code}.png`, {
+        // ponytail: кладемо PNG-байти під ім'ям .webp з чесним Content-Type: image/png.
+        // Браузер рендерить за content-type, розширення йому байдуже. Стеля відома:
+        // ці файли ~15-20 KB замість ~5 KB (cwebp на Vercel нема, а `sharp` — це
+        // 30 MB нативної залежності у функції, де зараз лише `pg`).
+        // Апгрейд: раз на квартал прогнати `scripts/recompress-photos.sh` — він
+        // дотискає все, що ще не webp.
+        const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${p.code}.webp`, {
           method: 'POST',
           headers: {
             ...sbHeaders,
