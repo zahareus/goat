@@ -38,15 +38,22 @@ test.describe('GOAT Smoke Tests', () => {
     await page.waitForSelector('.match-block', { state: 'attached', timeout: 15000 });
     await page.waitForSelector('img[src*="player-photos"]', { state: 'attached', timeout: 15000 });
 
-    const broken = await page.evaluate(async () => {
-      const imgs = [...document.querySelectorAll('img[src*="player-photos"]')];
-      await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => {
-        i.addEventListener('load', r, { once: true });
-        i.addEventListener('error', r, { once: true });
-      })));
-      return imgs.filter(i => i.naturalWidth === 0).map(i => i.src);
+    // Лише вже завантажені: у lazy-картинок поза екраном load/error не стріляє
+    // ніколи, тож чекати на них — це вічний таймаут.
+    await page.waitForFunction(
+      () => [...document.querySelectorAll('img[src*="player-photos"]')].filter(i => i.complete).length > 0,
+      null, { timeout: 15000 }
+    );
+
+    const { broken, loaded } = await page.evaluate(() => {
+      const done = [...document.querySelectorAll('img[src*="player-photos"]')].filter(i => i.complete);
+      return {
+        broken: done.filter(i => i.naturalWidth === 0).map(i => i.src),
+        loaded: done.length
+      };
     });
 
+    expect(loaded).toBeGreaterThan(0);
     expect(broken, `порожні зображення: ${broken.slice(0, 3).join(', ')}`).toHaveLength(0);
   });
 
