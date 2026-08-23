@@ -284,10 +284,14 @@ async function handleGWFinished({ gw }) {
 }
 
 // === Type: lineup_alert ===
-// Body: { fixture_ids: [273, 275, 278] }
+// Body: { fixture_ids: [273, 275, 278], wait_for_confirmed?: bool }
 // Per-user: show their picks for these fixtures with lineup status
+// wait_for_confirmed: caller still has time to retry, so stay silent until the club
+// announces the XI. Default false — a caller that does not opt in always gets a
+// message, just labelled honestly (a projected XI sent as "Starting XI" is a lie —
+// Sarr/EVE-CRY, 23.08.26).
 
-async function handleLineupAlert({ fixture_ids }) {
+async function handleLineupAlert({ fixture_ids, wait_for_confirmed }) {
   if (!fixture_ids || !fixture_ids.length) return { error: 'missing fixture_ids' };
 
   const [fixtures, users] = await Promise.all([
@@ -335,6 +339,11 @@ async function handleLineupAlert({ fixture_ids }) {
   fixtures.sort((a, b) => new Date(a.kickoff_time) - new Date(b.kickoff_time));
   const kickoffTime = fmtTimeShort(fixtures[0].kickoff_time);
 
+  const isConfirmed = (fix) => !!lineupsData[`${fix.home_team_id}-${fix.away_team_id}`]?.confirmed;
+  const allConfirmed = fixtures.every(isConfirmed);
+  // Not confirmed yet and the caller will retry → say nothing for now.
+  if (!allConfirmed && wait_for_confirmed) return { sent: 0, skipped: true, reason: 'lineups not confirmed' };
+
   let sent = 0;
   for (const user of users) {
     const userPicks = picks.filter(p => p.user_id === user.id);
@@ -363,8 +372,10 @@ async function handleLineupAlert({ fixture_ids }) {
           else if (st === 'out' || st === 'sus') statusIcon = '🔴';
         }
       }
-      // Fallback to FPL
+      // Fallback to FPL — fitness only, says nothing about the XI
+      let fromFpl = false;
       if (statusIcon === '❓' && pick.element_id in fplAvail) {
+        fromFpl = true;
         const chance = fplAvail[pick.element_id];
         if (chance === null || chance === 100) statusIcon = '🟢';
         else if (chance === 75) statusIcon = '⚠️';
@@ -373,7 +384,7 @@ async function handleLineupAlert({ fixture_ids }) {
       }
 
       let statusText = 'No data';
-      if (statusIcon === '🟢') statusText = 'Starting XI';
+      if (statusIcon === '🟢') statusText = fromFpl ? 'Available' : (isConfirmed(fix) ? 'Starting XI' : 'Expected XI');
       else if (statusIcon === '⚠️') statusText = 'Doubt/Benched';
       else if (statusIcon === '🔴') statusText = 'Out';
 
@@ -385,7 +396,8 @@ async function handleLineupAlert({ fixture_ids }) {
 
     if (lines.length === 0) continue;
 
-    const msg = `📋 <b>Lineups out!</b> Kickoff ${kickoffTime}\n\n` + lines.join('\n\n');
+    const header = allConfirmed ? '📋 <b>Lineups out!</b>' : '📋 <b>Expected lineups</b> (not confirmed yet)';
+    const msg = `${header} Kickoff ${kickoffTime}\n\n` + lines.join('\n\n');
     await send(user.telegram_chat_id, msg);
     sent++;
   }

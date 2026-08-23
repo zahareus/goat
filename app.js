@@ -633,7 +633,9 @@ function availHtml(elementId, fixture) {
   if (fixture) {
     const ko = new Date(fixture.kickoff_time);
     const minsToKo = (ko - new Date()) / 60000;
-    if (fixture.status === 'live' || fixture.status === 'ft' || (minsToKo <= 75 && minsToKo > -15)) {
+    // IN/OUT only on a club-announced XI; a projection stays a colored dot
+    const lu = lineupsData && lineupsData[fixture.home_team_id + '-' + fixture.away_team_id];
+    if (fixture.status === 'live' || fixture.status === 'ft' || (lu?.confirmed && minsToKo <= 75 && minsToKo > -15)) {
       const st = getAvailStatus(elementId);
       if (!st) return '';
       if (st === 'starter' || st === 'starter_ques')

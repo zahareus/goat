@@ -1,6 +1,9 @@
 // api/lineups.js — Predicted lineups from RotoWire matched to FPL players
 // Source: rotowire.com/soccer/lineups.php (free, no auth, server-rendered HTML)
-// Returns: { "fplHomeId-fplAwayId": { home: [...], away: [...] } }
+// Returns: { "fplHomeId-fplAwayId": { confirmed: bool, home: [...], away: [...] } }
+// confirmed: RotoWire marks the block "is-confirmed" once the club announces the XI.
+// Until then it is "is-expected" (journalist projection) or unmarked (pure guess) —
+// callers MUST NOT present those as a real starting XI.
 // Each player: { fpl_id, web_name, rw_name, rw_position, status }
 // Status: "starter" (green) | "starter_ques" (yellow, in XI but QUES) | "ques" (orange, not in XI) | "out"|"sus" (red)
 
@@ -251,7 +254,8 @@ export default async function handler(req, res) {
             const away = parseSide(awaySectionMatch?.[1], awayFpl);
 
             if (home.length > 0 || away.length > 0) {
-                result[`${homeFpl}-${awayFpl}`] = { home, away };
+                const confirmed = /class="lineup__status[^"]*\bis-confirmed\b/.test(block);
+                result[`${homeFpl}-${awayFpl}`] = { confirmed, home, away };
             }
         }
 
