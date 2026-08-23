@@ -133,6 +133,10 @@ async function handleMatchFinished({ fixture_id }) {
   const resultMap = {};
   for (const r of results) resultMap[r.element_id] = r;
 
+  // GW standing to append under the pick — same math as the bot's /gw table
+  // (goats first, then BPS), so the two never disagree.
+  const standing = await gwStanding(gw);
+
   let sent = 0;
   for (const user of users) {
     const pick = picks.find(p => p.user_id === user.id);
@@ -152,11 +156,50 @@ async function handleMatchFinished({ fixture_id }) {
       detail = `Your pick: ${h(pl.short_name)} (${h(pl.team_short)})\nNo BPS data yet`;
     }
 
-    await send(user.telegram_chat_id, header + '\n\n' + detail);
+    const me = standing.byUser[user.id];
+    const standLine = me
+      ? `\n\nGW${gw}: <b>#${me.pos}</b> of ${standing.total}  ·  ${me.goats} 👑  ·  ${me.bps} BPS`
+      : '';
+
+    await send(user.telegram_chat_id, header + '\n\n' + detail + standLine);
     sent++;
   }
 
   return { sent };
+}
+
+// Current GW table: position, GOATs and BPS per user, counted over every
+// fixture played so far this GW. Mirrors the /gw command's sort exactly.
+async function gwStanding(gw) {
+  const gwFixtures = await sbSelect('fixtures', `gw=eq.${gw}&select=id`);
+  const fIds = gwFixtures.map(f => f.id);
+  if (fIds.length === 0) return { byUser: {}, total: 0 };
+
+  const [allPicks, allResults] = await Promise.all([
+    sbSelect('picks', `gw=eq.${gw}&select=user_id,fixture_id,element_id`),
+    sbSelect('results', `fixture_id=in.(${fIds.join(',')})&select=fixture_id,element_id,bps,is_goat`),
+  ]);
+
+  const res = {};
+  for (const r of allResults) {
+    if (!res[r.fixture_id]) res[r.fixture_id] = {};
+    res[r.fixture_id][r.element_id] = r;
+  }
+
+  const totals = {};
+  for (const p of allPicks) {
+    if (!totals[p.user_id]) totals[p.user_id] = { uid: p.user_id, goats: 0, bps: 0 };
+    const r = res[p.fixture_id]?.[p.element_id];
+    if (r) {
+      totals[p.user_id].bps += r.bps;
+      if (r.is_goat) totals[p.user_id].goats++;
+    }
+  }
+
+  const sorted = Object.values(totals).sort((a, b) => b.goats - a.goats || b.bps - a.bps);
+  const byUser = {};
+  sorted.forEach((t, i) => { byUser[t.uid] = { pos: i + 1, goats: t.goats, bps: t.bps }; });
+  return { byUser, total: sorted.length };
 }
 
 // === Type: gw_finished ===
