@@ -317,7 +317,8 @@ async function handleLineupAlert({ fixture_ids, wait_for_confirmed }) {
   let fplAvail = {};
   try {
     const [linResp, fplResp] = await Promise.all([
-      fetch('https://goatapp.club/api/lineups').catch(() => null),
+      // Cache-buster: a lineup alert must never decide on a cached copy
+      fetch(`https://goatapp.club/api/lineups?t=${Date.now()}`).catch(() => null),
       fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
       }),

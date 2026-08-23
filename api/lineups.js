@@ -259,7 +259,10 @@ export default async function handler(req, res) {
             }
         }
 
-        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
+        // 60s, not an hour: the whole point of this endpoint is catching the moment
+        // a club confirms its XI. An hour-old copy told notify.js "not confirmed"
+        // 4 minutes after RotoWire confirmed NEW-LIV (23.08.26).
+        res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
         return res.json(result);
     } catch (err) {
         console.error('lineups error:', err);
