@@ -87,7 +87,6 @@ async function send(chatId, text) {
   });
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // === Finalization ===
 
@@ -226,16 +225,20 @@ async function notifyAll(gw, standings, prizes, gate) {
     : '';
   await send(adminChat, `🏁 <b>GW${gw} фіналізовано</b>\n${standings.length} учасників, роздано ${prizes.reduce((a, p) => a + p.stars, 0)} ⭐${gateLine ? '\n' + gateLine : ''}\n\n${lines.join('\n') || 'Призів немає'}`);
 
-  // player messages (humans with linked chats only)
+  // player messages: one final GW message (matches + standings + stars) via
+  // api/notify gw_finished — the only GW summary players get (24.08.26, Victor).
+  const prizePayload = {};
   for (const s of standings) {
     const prof = profileMap[s.uid];
     if (!prof || prof.is_bot || !prof.telegram_chat_id) continue;
     const prize = prizeMap[s.uid];
-    let msg = `🏁 <b>GW${gw} finished!</b>\nYour result: place <b>${s.rank}</b> of ${standings.length} — ${s.goats} GOAT, ${s.bps} BPS.`;
-    if (prize) msg += `\n\n🏆 You won <b>${prize.stars} ⭐</b>!`;
-    const bal = balance[s.uid] || 0;
-    if (bal > 0) msg += `\n⭐ Star balance: <b>${bal}</b>`;
-    await send(prof.telegram_chat_id, msg);
-    await sleep(50); // Telegram rate limit
+    if (!prize) continue;
+    prizePayload[s.uid] = { place: prize.place, stars: prize.stars, balance: balance[s.uid] || 0 };
   }
+  const r = await fetch(`https://goatapp.club/api/notify?secret=${env('GOAT_NOTIFY_SECRET')}&type=gw_finished`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gw, prizes: prizePayload }),
+  });
+  if (!r.ok) throw new Error(`notify gw_finished ${r.status}: ${await r.text()}`);
 }

@@ -203,10 +203,13 @@ async function gwStanding(gw) {
 }
 
 // === Type: gw_finished ===
-// Body: { gw }
-// Send full GW summary + standings to each user (same format as /gw command)
+// Body: { gw, prizes?: { [uid]: { place, stars, balance } } }
+// Send full GW summary + standings to each user (same format as /gw command).
+// Called by api/prize-finalize.js ONLY after FPL confirms the data and stars are
+// accrued — this is the single final message of the gameweek. Do not fire it at
+// the last whistle: BPS is still provisional then (24.08.26, Victor).
 
-async function handleGWFinished({ gw }) {
+async function handleGWFinished({ gw, prizes }) {
   if (!gw) return { error: 'missing gw' };
 
   const users = await getLinkedUsers();
@@ -303,10 +306,22 @@ async function handleGWFinished({ gw }) {
     }
 
     const myPos = standings.findIndex(s => s.uid === userId) + 1;
+    // No <code> wrapper: Telegram ignores nested entities inside a code block,
+    // so the viewer's own row could not be bolded there.
     const standLines = standings.map((s, i) => {
-      const arrow = s.uid === userId ? ' ◀️' : '';
-      return `${i + 1}. ${s.name}  ${s.goats}👑 ${s.bps} BPS${arrow}`;
+      const p = prizes?.[s.uid];
+      const star = p ? `  ${p.stars}⭐` : '';
+      const row = `${i + 1}. ${h(s.name)}  ${s.goats}👑 ${s.bps} BPS${star}`;
+      return s.uid === userId ? `<b>${row} ◀️</b>` : row;
     });
+
+    const myPrize = prizes?.[userId];
+    let prizeLines = '';
+    if (myPrize) {
+      prizeLines = `🏆 You won <b>${myPrize.stars} ⭐</b>!`;
+      if (myPrize.balance > 0) prizeLines += `\n⭐ Star balance: <b>${myPrize.balance}</b>`;
+      prizeLines += '\n\n';
+    }
 
     const header = `🏆 <b>GW${gw} FINAL</b> — ${h(teamName)}`;
     const summary = `\n📊 <b>${goats}</b> GOATs  |  <b>${totalBps}</b> BPS`;
@@ -315,9 +330,9 @@ async function handleGWFinished({ gw }) {
     const msg = header + '\n\n'
       + matchLines.join('\n\n') + '\n'
       + summary + position + '\n\n'
-      + '📋 <b>Standings</b>\n<code>'
-      + standLines.join('\n')
-      + '</code>';
+      + prizeLines
+      + '📋 <b>Standings</b>\n'
+      + standLines.join('\n');
 
     await send(user.telegram_chat_id, msg);
     sent++;
