@@ -1,15 +1,19 @@
 // api/prize-finalize.js — auto-finalize finished gameweeks and accrue star prizes
 // POST /api/prize-finalize?secret=GOAT_NOTIFY_SECRET
 // Called by n8n hourly. Gate per GW: every fixture ft, every result final,
-// >=24h since last kickoff+FT buffer (FPL corrects bonuses within a day),
-// last kickoff no older than 14 days (never finalize historical seasons).
+// and FPL itself has confirmed the gameweek (every fixture `finished === true`,
+// not `finished_provisional`) — bonuses land at the whistle but BPS stays
+// editable until FPL checks the data, and accruals are irreversible.
+// CEILING_H is the escape hatch for an FPL flag that never flips.
+// Last kickoff no older than 14 days (never finalize historical seasons).
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const { computeGwStandings, distributePrizes, seasonForDate } = require('../lib/scoring.js');
 
-const KICKOFF_BUFFER_H = 27; // ~3h match + 24h FPL corrections buffer
+const CEILING_H = 48; // finalize anyway if FPL never confirms; alert says so
 const MAX_AGE_DAYS = 14;
+const FPL_FIXTURES = 'https://fantasy.premierleague.com/api/fixtures/?event=';
 
 function env(name) {
   return (process.env[name] || '').trim();
@@ -24,11 +28,11 @@ module.exports = async function handler(req, res) {
   try {
     const done = [];
     const gws = await candidateGws();
-    for (const gw of gws) {
-      const outcome = await finalizeGw(gw);
-      done.push({ gw, ...outcome });
+    for (const c of gws) {
+      const outcome = await finalizeGw(c.gw, c);
+      done.push({ gw: c.gw, ...outcome });
     }
-    return res.status(200).json({ ok: true, checked: gws, results: done });
+    return res.status(200).json({ ok: true, checked: gws.map(c => c.gw), results: done });
   } catch (err) {
     console.error('prize-finalize error:', err);
     return res.status(500).json({ error: err.message });
@@ -87,6 +91,25 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // === Finalization ===
 
+// FPL's own verdict on a gameweek. `finished_provisional` flips at the whistle,
+// `finished` only after the data is checked — that is the one we wait for.
+// A failed fetch reads as "not confirmed": we retry next hour, ceiling covers us.
+async function fplConfirmed(gw) {
+  try {
+    const r = await fetch(`${FPL_FIXTURES}${gw}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+    });
+    if (!r.ok) return { ok: false, done: 0, total: 0 };
+    const fx = await r.json();
+    if (!Array.isArray(fx) || !fx.length) return { ok: false, done: 0, total: 0 };
+    const done = fx.filter(f => f.finished === true).length;
+    return { ok: done === fx.length, done, total: fx.length };
+  } catch (e) {
+    console.error('fplConfirmed failed for gw', gw, e.message);
+    return { ok: false, done: 0, total: 0 };
+  }
+}
+
 async function candidateGws() {
   const rows = await sbSelect('gw_config', 'finalized_at=is.null&select=gw&order=gw.asc');
   const out = [];
@@ -107,8 +130,12 @@ async function candidateGws() {
       continue;
     }
     const ageH = (Date.now() - lastKickoff) / 3600e3;
-    if (ageH < KICKOFF_BUFFER_H || ageH > MAX_AGE_DAYS * 24) continue;
-    out.push(gw);
+    if (ageH > MAX_AGE_DAYS * 24) continue;
+    const fpl = await fplConfirmed(gw);
+    // one line per hourly run: how long FPL took to confirm, for tuning the gate
+    console.log(`gw${gw} gate: fplConfirmed=${fpl.ok} (${fpl.done}/${fpl.total}) +${ageH.toFixed(1)}h since last kickoff`);
+    if (!fpl.ok && ageH < CEILING_H) continue;
+    out.push({ gw, waitedH: Math.round(ageH * 10) / 10, viaCeiling: !fpl.ok });
   }
   // stateless once-a-day dedup: hourly cron, alert only on the 09:xx UTC run
   if (stuck.length && new Date().getUTCHours() === 9) {
@@ -118,7 +145,7 @@ async function candidateGws() {
   return out;
 }
 
-async function finalizeGw(gw) {
+async function finalizeGw(gw, gate) {
   const season = seasonForDate();
 
   // idempotency: an accrual for this season+gw means a previous run got here
@@ -158,7 +185,7 @@ async function finalizeGw(gw) {
   }
   await markFinalized(gw);
   try {
-    await notifyAll(gw, standings, prizes);
+    await notifyAll(gw, standings, prizes, gate);
   } catch (e) {
     // accruals are in; a Telegram hiccup must not look like a failed finalize
     console.error('notifyAll failed for gw', gw, e);
@@ -172,7 +199,7 @@ async function markFinalized(gw) {
 
 // === Notifications ===
 
-async function notifyAll(gw, standings, prizes) {
+async function notifyAll(gw, standings, prizes, gate) {
   const userIds = standings.map(s => s.uid);
   const [profiles, ledger, activePayouts] = await Promise.all([
     sbSelectAll('profiles', `id=in.(${userIds.join(',')})&select=id,team_name,telegram_chat_id,is_bot`),
@@ -192,7 +219,12 @@ async function notifyAll(gw, standings, prizes) {
     return `${p.place}. ${prof ? prof.team_name : p.uid}${prof && prof.is_bot ? ' 🤖' : ''} — ${s.goats} GOAT / ${s.bps} BPS — ${p.stars} ⭐`;
   });
   const adminChat = env('GOAT_ADMIN_CHAT_ID') || '292048';
-  await send(adminChat, `🏁 <b>GW${gw} фіналізовано</b>\n${standings.length} учасників, роздано ${prizes.reduce((a, p) => a + p.stars, 0)} ⭐\n\n${lines.join('\n') || 'Призів немає'}`);
+  const gateLine = gate
+    ? (gate.viaCeiling
+        ? `⚠️ по стелі ${CEILING_H}h — FPL так і не підтвердив дані`
+        : `FPL підтвердив через ${gate.waitedH}h після останнього кікофу`)
+    : '';
+  await send(adminChat, `🏁 <b>GW${gw} фіналізовано</b>\n${standings.length} учасників, роздано ${prizes.reduce((a, p) => a + p.stars, 0)} ⭐${gateLine ? '\n' + gateLine : ''}\n\n${lines.join('\n') || 'Призів немає'}`);
 
   // player messages (humans with linked chats only)
   for (const s of standings) {
