@@ -221,7 +221,9 @@ async function initTmaAuth() {
   if (data.status === 'ok' && data.token_hash) {
     const { error } = await sb.auth.verifyOtp({ type: 'email', token_hash: data.token_hash });
     if (error) { showToast('Login failed'); return; }
-    if (data.is_new) tmaRequestWriteAccess();
+    // every login, not just the first: players who joined before this existed —
+    // or who dismissed the prompt — would silently never get result DMs
+    tmaRequestWriteAccess();
   }
 }
 
@@ -252,7 +254,8 @@ async function tmaPost(body) {
 }
 
 // Telegram forbids bots from messaging users who never started the bot chat —
-// without this, Mini-App-only players silently miss deadline/result notifications
+// without this, Mini-App-only players silently miss deadline/result notifications.
+// No-op once allows_write_to_pm is set, so re-asking every login costs nothing.
 function tmaRequestWriteAccess() {
   const tw = window.Telegram.WebApp;
   const tgU = tw.initDataUnsafe && tw.initDataUnsafe.user;
