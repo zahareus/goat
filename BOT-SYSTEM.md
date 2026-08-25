@@ -119,6 +119,7 @@ curl -X POST "https://goatapp.club/api/bot-picks?secret=$GOAT_NOTIFY_SECRET"
 - `SUPABASE_SERVICE_ROLE_KEY`, `GOAT_NOTIFY_SECRET` — обов'язкові
 - `THE_ODDS_API_KEY` — the-odds-api (той самий ключ, що в ledap). Без нього боти обирають команду 50/50 і пишуть warning у лог
 - `TELEGRAM_BOT_TOKEN`, `GOAT_ADMIN_CHAT_ID` — алерт про деградацію
+- 🔴 Як `GOAT_NOTIFY_SECRET` доїжджає до ендпоінтів — див. «Cron endpoints & their secret» у `CLAUDE.md`. Коротко: Photo Sync ходить заголовком `x-goat-secret` через n8n-credential «GOAT notify secret (x-goat-secret)» (`BWtklpJJY4Dt5qZQ`), решта воркфлоу — досі `?secret=` у тексті URL ноди.
 
 ### n8n workflow
 - ID: `so4OiXG3rd3LqShU`

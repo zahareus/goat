@@ -56,12 +56,24 @@ When modifying code:
 - `app.js` — monolithic frontend (2190 lines)
 - Admin email: `zahareus@gmail.com`
 
+## Cron endpoints & their secret
+
+Every `api/*` cron endpoint is guarded by `GOAT_NOTIFY_SECRET` (Vercel env). Two ways to pass it:
+
+- **Header `x-goat-secret`** — what "GOAT Photo Sync" uses. The value lives in the n8n credential **"GOAT notify secret (x-goat-secret)"** (`BWtklpJJY4Dt5qZQ`, type `httpHeaderAuth`), so it is encrypted at rest and absent from the exported workflow JSON. Supported by `api/sync-photos.js` today; extend the same way when moving another workflow.
+- **`?secret=` query** — still how the other six GOAT workflows authenticate, with the key in plain text inside their node URL. Working as intended, just less private; migrate opportunistically, never mid-gameweek.
+
+Same secret value for both. To call one by hand:
+`curl -H "x-goat-secret: $GOAT_NOTIFY_SECRET" https://goatapp.club/api/sync-photos`
+
+n8n workflows: Finalize `jdI9MfAZ5K90PuMF` · Live BPS `wfcIOOfE6bVkW1gc` · Prize Finalize `XfmxUmo1g6qB5Cpg` · Bot Picks `so4OiXG3rd3LqShU` · Deadline Reminder `AxEqrPyvwHm825W1` · Lineup Alert `VBmk050efsVLEPHs` · Photo Sync `vZoUiKRKW4mzw1rX`. Edit them over the REST API (`X-N8N-API-KEY` from `~/.config/n8n.env`), and back the workflow up to `backups/` before every PUT.
+
 ## Domain Vocabulary
 
 - **TMA** — Telegram Mini App (t.me/goatsoccergame_bot/goat) — the ONLY way to play. Browser goatapp.club = landing page only; full web app exists solely behind `?webapp=1` for Playwright e2e (never remove).
 - **GOAT pick** — user's chosen player for one fixture; `is_goat` = TRUE for ALL players sharing max BPS (ties allowed).
 - **Prize ledger** — `prize_ledger` + `payouts` tables; Telegram Stars paid via split.tg (xRocket USDT invoices). Bots participate in prizes as economy stabilizers — never expose bot status in public UI.
-- **Finalization** — automatic n8n cron ("GOAT Prize Finalize"): gate = all fixtures FT + results final + 27h buffer.
+- **Finalization** — automatic n8n cron ("GOAT Prize Finalize", hourly): gate = all fixtures FT + results final + FPL's own `events[gw].finished && data_checked` from bootstrap-static. Measured on GW1: FPL flipped +13.2h after the last kickoff, finalize ran at +14h. Before computing standings it re-reads `fixtures?event=<gw>` and upserts `results` — Live BPS stops at the whistle, hours before FPL finishes checking (see Iron Rule 6).
 
 ## 🔴 Iron Rules
 
@@ -70,6 +82,7 @@ When modifying code:
 3. **CSP `frame-ancestors` in vercel.json** replaces X-Frame-Options — don't restore DENY, don't add other CSP directives (site relies on inline onclick).
 4. **`backups/` may contain n8n exports with live secrets** — stays gitignored, never `git add -A` around it.
 5. **UI rules from Victor:** no label may wrap to 2 lines; dates everywhere DD/MM/YY.
+6. **Never trust `results` at the whistle.** Live BPS syncs only the ACTIVE gameweek, and a gameweek goes inactive the moment the last match ends — FPL kept editing BPS for 13 more hours after that in GW1 (9 rows drifted permanently). Anything that pays out or declares a final standing must re-read FPL first, the way `api/prize-finalize.js` does: same `fixtures?event=` endpoint and same parsing as the Live BPS node, max over the RAW entries before filtering unknown players, one upsert on the `(fixture_id, element_id)` PK with `is_final: true`. Never patch only the changed rows — a crown moves by its neighbours' BPS.
 
 ## ⚠️ Known Traps
 
