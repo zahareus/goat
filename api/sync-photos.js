@@ -1,5 +1,8 @@
 // api/sync-photos.js — Sync missing player photos from FPL CDN to Supabase Storage
-// Triggered manually or via n8n: GET /api/sync-photos?secret=GOAT_NOTIFY_SECRET
+// Triggered manually or via n8n: GET /api/sync-photos
+// Auth: header `x-goat-secret` (what n8n uses — an n8n credential keeps the value
+// out of the workflow JSON, where a query string would sit in plain sight), or
+// `?secret=` for a quick curl by hand. Same GOAT_NOTIFY_SECRET either way.
 
 const SUPABASE_URL = 'https://zanssnurnzdqwaxuadge.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,7 +14,8 @@ const MAX_UPLOADS = 10; // ~100 KB each; 20 real downloads no longer fit the bud
 const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' };
 
 module.exports = async function handler(req, res) {
-  if (req.query.secret !== SECRET) {
+  const given = req.headers['x-goat-secret'] || req.query.secret;
+  if (!SECRET || given !== SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
