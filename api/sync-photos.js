@@ -14,7 +14,7 @@ const MAX_UPLOADS = 10; // ~100 KB each; 20 real downloads no longer fit the bud
 const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' };
 
 module.exports = async function handler(req, res) {
-  const given = req.headers['x-goat-secret'] || req.query.secret;
+  const given = (req.headers && req.headers['x-goat-secret']) || req.query.secret;
   if (!SECRET || given !== SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
