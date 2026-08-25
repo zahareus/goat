@@ -306,13 +306,18 @@ async function handleGWFinished({ gw, prizes }) {
     }
 
     const myPos = standings.findIndex(s => s.uid === userId) + 1;
-    // No <code> wrapper: Telegram ignores nested entities inside a code block,
-    // so the viewer's own row could not be bolded there.
+    // <pre> keeps the columns lined up. Telegram drops nested entities inside a
+    // code block, so the viewer's own row is marked with ◀️ instead of bold.
+    // 👑 is on every row, so the columns after it stay aligned; ⭐ is last, where
+    // its double width cannot push anything out of true.
+    const nameW = Math.min(18, Math.max(...standings.map(s => s.name.length)));
+    const bpsW = Math.max(...standings.map(s => String(s.bps).length));
     const standLines = standings.map((s, i) => {
       const p = prizes?.[s.uid];
-      const star = p ? `  ${p.stars}⭐` : '';
-      const row = `${i + 1}. ${h(s.name)}  ${s.goats}👑 ${s.bps} BPS${star}`;
-      return s.uid === userId ? `<b>${row} ◀️</b>` : row;
+      const name = s.name.length > nameW ? s.name.slice(0, nameW - 1) + '…' : s.name.padEnd(nameW);
+      const row = `${String(i + 1).padStart(2)}. ${name} ${s.goats}👑 ${String(s.bps).padStart(bpsW)} BPS`
+        + (p ? ` ${String(p.stars).padStart(2)}⭐` : '');
+      return h(s.uid === userId ? `${row} ◀️` : row);
     });
 
     const myPrize = prizes?.[userId];
@@ -332,7 +337,7 @@ async function handleGWFinished({ gw, prizes }) {
       + summary + position + '\n\n'
       + prizeLines
       + '📋 <b>Standings</b>\n'
-      + standLines.join('\n');
+      + '<pre>' + standLines.join('\n') + '</pre>';
 
     await send(user.telegram_chat_id, msg);
     sent++;
