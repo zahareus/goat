@@ -274,36 +274,43 @@ async function handleGWFinished({ gw, prizes }) {
     const myPickMap = {};
     for (const p of myPicks) myPickMap[p.fixture_id] = p.element_id;
 
+    // One row per match instead of two lines: match, score, your pick, its BPS
+    // rank inside that match, its BPS. The club is dropped — the fixture name
+    // already names both teams (25.08.26, Victor).
     let totalBps = 0;
     let goats = 0;
-    const matchLines = [];
+    const rows = [];
 
     for (const f of fixtures) {
       const eid = myPickMap[f.id];
-      const score = `${f.home_score}:${f.away_score}`;
-      let line = `🏁 <b>${h(f.home_short)} – ${h(f.away_short)}</b>  ${score}`;
-
-      if (!eid) {
-        line += '\n    <i>no pick</i>';
-      } else {
-        const pl = playerMap[eid];
-        const name = pl ? pl.short_name : `#${eid}`;
-        const team = pl ? pl.team_short : '';
-        const res = resultMap[f.id]?.[eid];
-        if (res) {
-          const crown = res.is_goat ? ' 👑' : '';
-          if (res.is_goat) goats++;
-          totalBps += res.bps;
-          const fResults = Object.values(resultMap[f.id] || {});
-          fResults.sort((a, b) => b.bps - a.bps);
-          const rank = fResults.findIndex(r => r.element_id === eid) + 1;
-          line += `\n    ${h(name)} (${team})${crown}  #${rank}  <b>${res.bps}</b> BPS`;
-        } else {
-          line += `\n    ${h(name)} (${team})`;
-        }
+      const pl = eid ? playerMap[eid] : null;
+      const res = eid ? resultMap[f.id]?.[eid] : null;
+      let rank = '';
+      if (res) {
+        if (res.is_goat) goats++;
+        totalBps += res.bps;
+        const fResults = Object.values(resultMap[f.id] || {});
+        fResults.sort((a, b) => b.bps - a.bps);
+        rank = '#' + (fResults.findIndex(r => r.element_id === eid) + 1);
       }
-      matchLines.push(line);
+      rows.push({
+        match: `${f.home_short}-${f.away_short}`,
+        score: `${f.home_score}:${f.away_score}`,
+        pick: pl ? pl.short_name : (eid ? `#${eid}` : 'no pick'),
+        rank,
+        bps: res ? String(res.bps) : '',
+        goat: !!(res && res.is_goat),
+      });
     }
+
+    const colW = k => Math.max(...rows.map(r => r[k].length));
+    const wm = colW('match'), wp = Math.min(12, colW('pick')), wr = colW('rank'), wb = colW('bps');
+    const matchTable = rows.map(r => {
+      const pick = r.pick.length > wp ? r.pick.slice(0, wp - 1) + '…' : r.pick.padEnd(wp);
+      const line = `${r.match.padEnd(wm)} ${r.score}  ${pick} ${r.rank.padStart(wr)} ${r.bps.padStart(wb)}`
+        + (r.bps ? ' BPS' : '') + (r.goat ? ' 👑' : '');
+      return h(line.trimEnd());
+    }).join('\n');
 
     const myPos = standings.findIndex(s => s.uid === userId) + 1;
     // <pre> keeps the columns lined up. Telegram drops nested entities inside a
@@ -333,7 +340,7 @@ async function handleGWFinished({ gw, prizes }) {
     const position = myPos > 0 ? `  |  🏆 ${myPos}/${standings.length}` : '';
 
     const msg = header + '\n\n'
-      + matchLines.join('\n\n') + '\n'
+      + '🏁 <b>Results</b>\n<pre>' + matchTable + '</pre>\n'
       + summary + position + '\n\n'
       + prizeLines
       + '📋 <b>Standings</b>\n'
