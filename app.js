@@ -161,11 +161,6 @@ async function initAuth() {
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
-      // Save Google avatar URL to profile if available
-      const meta = session.user.user_metadata;
-      if (meta && meta.avatar_url) {
-        sb.from('profiles').update({ avatar_url: meta.avatar_url }).eq('id', session.user.id).then(() => {});
-      }
       // Reload with user context
       loadAppData().then(function() { maybeStartTour(); });
     }

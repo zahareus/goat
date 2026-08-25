@@ -223,9 +223,15 @@ async function authResponse(userId, tgUser, isNew) {
   // Payouts send Stars to @username, so keep it fresh on every login —
   // user_metadata captures it only once at signup and Telegram frees old
   // usernames immediately after a change.
+  // Telegram photo is the canonical avatar: refresh it on every login so a
+  // changed picture (or a legacy Google one) does not stick forever. Absent
+  // photo_url means "no photo in Telegram" — keep whatever is there.
   await sbAdmin(`/rest/v1/profiles?id=eq.${userId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ telegram_username: tgUser.username || null }),
+    body: JSON.stringify({
+      telegram_username: tgUser.username || null,
+      ...(tgUser.photo_url ? { avatar_url: tgUser.photo_url } : {}),
+    }),
   });
   const email = user.email || syntheticEmail(tgUser);
   const link = await sbAdmin('/auth/v1/admin/generate_link', {
