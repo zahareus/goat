@@ -15,6 +15,7 @@ const { computeGwStandings, distributePrizes, seasonForDate } = require('../lib/
 const ALERT_H = 48; // FPL still silent this long after the last kickoff → tell the admin
 const MAX_AGE_DAYS = 14;
 const FPL_BOOTSTRAP = 'https://fantasy.premierleague.com/api/bootstrap-static/';
+const FPL_FIXTURES = 'https://fantasy.premierleague.com/api/fixtures/?event=';
 
 function env(name) {
   return (process.env[name] || '').trim();
@@ -71,10 +72,10 @@ async function sbSelectAll(table, query) {
   }
 }
 
-async function sbWrite(method, table, query, body) {
+async function sbWrite(method, table, query, body, prefer) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query ? '?' + query : ''}`, {
     method,
-    headers: sbHeaders({ Prefer: 'return=minimal' }),
+    headers: sbHeaders({ Prefer: prefer ? `return=minimal,${prefer}` : 'return=minimal' }),
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`${method} ${table} ${r.status}: ${await r.text()}`);
@@ -154,8 +155,73 @@ async function candidateGws() {
   return out;
 }
 
+// Live BPS only syncs the ACTIVE gameweek, and a gameweek stops being active at
+// the last whistle — hours before FPL finishes checking the data. Those late BPS
+// corrections never reached us (13 rows drifted in GW1, 24.08.26). So we re-read
+// FPL right before paying: same endpoint and same parsing as the Live BPS node,
+// so nothing can diverge between the two. Returns rows written, or throws.
+async function syncResultsFromFpl(gw) {
+  const r = await fetch(`${FPL_FIXTURES}${gw}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+  });
+  if (!r.ok) throw new Error(`FPL fixtures ${r.status}`);
+  const fixtures = await r.json();
+  if (!Array.isArray(fixtures) || !fixtures.length) throw new Error('FPL fixtures empty');
+
+  // an element_id FPL knows and we don't would kill the whole batch on the FK
+  const known = new Set((await sbSelectAll('players', 'select=element_id')).map(p => p.element_id));
+
+  const rows = [];
+  for (const f of fixtures) {
+    const bpsStat = f.stats && f.stats.find(s => s.identifier === 'bps');
+    if (!bpsStat) continue;
+    const entries = [...(bpsStat.h || []), ...(bpsStat.a || [])];
+    if (!entries.length) continue;
+    // max over the RAW entries, before dropping unknown players — otherwise an
+    // unknown top scorer would hand the crown to the runner-up (Live BPS parity)
+    const maxBps = Math.max(...entries.map(e => e.value));
+    for (const e of entries) {
+      if (!known.has(e.element)) continue;
+      rows.push({
+        fixture_id: f.id,
+        element_id: e.element,
+        bps: e.value,
+        is_goat: maxBps > 0 && e.value === maxBps,
+        // the gameweek is FPL-confirmed by the time we get here
+        is_final: true,
+      });
+    }
+  }
+  if (!rows.length) throw new Error('no bps rows parsed');
+
+  // one upsert on the (fixture_id, element_id) PK: idempotent, and it rewrites
+  // is_goat for EVERY row of a fixture — a crown moves by its neighbours' BPS,
+  // so patching only the changed rows would leave two GOATs or none.
+  await sbWrite('POST', 'results', '', rows, 'resolution=merge-duplicates');
+
+  // Rows we hold that FPL no longer lists (a corrected line-up). We do NOT delete
+  // them — Live BPS has never done so either — but a growing count means drift.
+  const seen = new Set(rows.map(r => `${r.fixture_id}:${r.element_id}`));
+  const stored = await sbSelectAll('results', `fixture_id=in.(${fixtures.map(f => f.id).join(',')})&select=fixture_id,element_id`);
+  const orphans = stored.filter(r => !seen.has(`${r.fixture_id}:${r.element_id}`)).length;
+  console.log(`gw${gw} bps sync: ${rows.length} rows upserted, ${orphans} stored rows no longer in FPL`);
+  return rows.length;
+}
+
 async function finalizeGw(gw, gate) {
   const season = seasonForDate();
+
+  // Before the idempotency check on purpose: this is the slow part, and it must
+  // not widen the window between checking prize_ledger and writing to it.
+  let synced;
+  try {
+    synced = await syncResultsFromFpl(gw);
+  } catch (e) {
+    console.error('bps sync failed for gw', gw, e.message);
+    await send(env('GOAT_ADMIN_CHAT_ID') || '292048',
+      `⚠️ GW${gw}: не вдалося синхронізувати BPS з FPL (${String(e.message).replace(/[<>&]/g, ' ')}) — фіналізацію відкладено, ретрай за годину.`);
+    return { skipped: 'bps_sync_failed', error: e.message };
+  }
 
   // idempotency: an accrual for this season+gw means a previous run got here
   const existing = await sbSelect('prize_ledger', `season=eq.${season}&gw=eq.${gw}&type=eq.accrual&select=id&limit=1`);
@@ -171,7 +237,11 @@ async function finalizeGw(gw, gate) {
   // gate: every fixture has final results
   const fixturesWithResults = new Set(results.map(r => r.fixture_id));
   if (fixturesWithResults.size < fixtureIds.length) return { skipped: 'missing_results' };
-  if (results.some(r => !r.is_final)) return { skipped: 'results_not_final' };
+  if (results.some(r => !r.is_final)) {
+    await send(env('GOAT_ADMIN_CHAT_ID') || '292048',
+      `⚠️ GW${gw}: FPL тур підтвердив, але в results є не-final рядки — фіналізацію зупинено.`);
+    return { skipped: 'results_not_final' };
+  }
 
   const picks = await sbSelectAll('picks', `gw=eq.${gw}&select=user_id,fixture_id,element_id`);
   if (!picks.length) {
@@ -199,7 +269,7 @@ async function finalizeGw(gw, gate) {
     // accruals are in; a Telegram hiccup must not look like a failed finalize
     console.error('notifyAll failed for gw', gw, e);
   }
-  return { players: standings.length, prizes: prizes.length };
+  return { players: standings.length, prizes: prizes.length, syncedRows: synced };
 }
 
 async function markFinalized(gw) {

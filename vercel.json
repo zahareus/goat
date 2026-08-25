@@ -1,6 +1,7 @@
 {
   "functions": {
-    "api/sync-photos.js": { "maxDuration": 60 }
+    "api/sync-photos.js": { "maxDuration": 60 },
+    "api/prize-finalize.js": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
