@@ -4,6 +4,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_PU7gbL0MVSaVhI4WPodRxg_xA0-LG6e';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TMA = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+const FROZEN = true; // project freeze 2026-09-01: Coming Soon for all clients
 
 const CDN = 'https://zanssnurnzdqwaxuadge.supabase.co/storage/v1/object/public/player-photos/';
 const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 68 78' fill='none'%3E%3Crect width='68' height='78' fill='%23252525'/%3E%3Ccircle cx='34' cy='28' r='12' fill='%23444'/%3E%3Cellipse cx='34' cy='62' rx='18' ry='14' fill='%23444'/%3E%3C/svg%3E";
@@ -2582,6 +2583,17 @@ setInterval(function() {
 
 // ===== INIT =====
 async function boot() {
+  // FROZEN: project on hold — everyone (web + Telegram) gets the Coming Soon landing, app never boots
+  if (FROZEN) {
+    if (TMA) { try { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); } catch (e) {} }
+    var l = document.getElementById('web-landing');
+    l.classList.add('frozen');
+    l.querySelector('.landing-tag').textContent = 'Coming Soon';
+    var cta = l.querySelector('.landing-cta'); if (cta) cta.remove();
+    document.getElementById('app-wrap').style.display = 'none';
+    l.style.display = 'flex';
+    return;
+  }
   // Non-Telegram browsers get a landing only; ?webapp=1 is the escape hatch for e2e tests
   if (!TMA && !new URLSearchParams(window.location.search).has('webapp')) {
     document.getElementById('web-landing').style.display = 'flex';

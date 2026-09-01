@@ -117,6 +117,8 @@ body{
   gap:14px;text-align:center;padding:24px;
 }
 .landing-logo{width:96px;height:96px}
+#web-landing.frozen .landing-logo{width:180px;height:180px}
+#web-landing.frozen .landing-tag{font-size:22px;font-weight:600;color:var(--text)}
 .landing-title{font-size:32px;font-weight:900;letter-spacing:6px;color:var(--gold-200)}
 .landing-tag{color:var(--text-sub);font-size:15px;line-height:1.6}
 .landing-cta{
