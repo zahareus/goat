@@ -4,8 +4,9 @@ name: DB Backup (Supabase free)
 # uploads a gzipped logical dump (public + auth schemas) to CloudRV.
 # It also doubles as a keepalive (the pooler connection counts as DB activity).
 on:
-  schedule:
-    - cron: '30 2 * * *'   # daily 02:30 UTC (staggered after flop11)
+  # schedule disabled 2026-09-01: project frozen, Supabase paused (see FREEZE.md)
+  # schedule:
+  #   - cron: '30 2 * * *'   # daily 02:30 UTC (staggered after flop11)
   workflow_dispatch: {}
 
 concurrency:

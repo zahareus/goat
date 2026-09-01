@@ -8,3 +8,4 @@ node_modules/
 test-results/
 backups/
 supabase/.temp/
+_freeze-backup/
